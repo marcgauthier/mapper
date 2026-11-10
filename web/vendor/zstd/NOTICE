@@ -1,0 +1,8 @@
+@bokuweb/zstd-wasm v0.0.27
+Author: Yoshihito (bokuweb)
+Source: https://github.com/bokuweb/zstd-wasm
+
+The upstream package.json declares the MIT license. Its README states:
+"TypeScript glue is provided under the MIT License, and the zstd is provided by Facebook under the BSD 3-Clause License."
+
+The unmodified README is retained as README.upstream.md. Upstream does not ship a standalone wrapper license file. The Zstandard BSD license is retained as LICENSE-zstd.

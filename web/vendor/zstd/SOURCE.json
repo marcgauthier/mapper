@@ -1,0 +1,8 @@
+{
+  "package": "@bokuweb/zstd-wasm",
+  "version": "0.0.27",
+  "gitHead": "87277ab93c2861d6c265a2ff43c7e7fb14d9a8c5",
+  "source": "https://registry.npmjs.org/@bokuweb/zstd-wasm/-/zstd-wasm-0.0.27.tgz",
+  "integrity": "sha512-GDm2uOTK3ESjnYmSeLQifJnBsRCWajKLvN32D2ZcQaaCIJI/Hse9s74f7APXjHit95S10UImsRGkTsbwHmrtmg==",
+  "changes": "ES module relative imports receive explicit .js paths; source map comments removed."
+}

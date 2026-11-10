@@ -1,0 +1,15 @@
+# Compiled binaries and test artifacts
+/mapper
+*.test
+*.so
+*.a
+coverage.out
+coverage.html
+
+# Runtime database and logs
+/data/
+
+# Editor and OS artifacts
+.DS_Store
+*.swp
+*~

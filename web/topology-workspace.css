@@ -1,0 +1,200 @@
+.scope-active .toolbar > #siteFilter,
+.scope-active .toolbar > #buildingFilter,
+.scope-active .toolbar > #roomFilter,
+.scope-active .toolbar > #networkFilter,
+.scope-active .toolbar > .select2 {
+  display: none !important;
+}
+#scopeToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  flex: 1;
+}
+#scopeToolbar select {
+  max-width: 190px;
+}
+#scopeBreadcrumbs {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: calc(100% - 30px);
+  padding: 5px 8px;
+  background: #fffef4ee;
+  border: 1px solid #ddd6c3;
+  border-radius: 9px;
+}
+#scopeBreadcrumbs button {
+  font-size: 12px;
+  padding: 4px 7px;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+#scopeBreadcrumbs button:last-child {
+  font-weight: 700;
+}
+#scopeNotice {
+  position: absolute;
+  left: 12px;
+  bottom: 90px;
+  z-index: 4;
+  max-width: 75%;
+  padding: 7px 11px;
+  border: 1px solid #d6dfe9;
+  background: #ffffffed;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #40546d;
+}
+#scopeMore {
+  position: absolute;
+  right: 15px;
+  top: 60px;
+  z-index: 7;
+}
+#scopeDialog {
+  width: min(700px, calc(100vw - 24px));
+}
+#scopeDialog form {
+  padding: 20px;
+}
+#scopeDialog h2 {
+  margin: 0 0 14px;
+  font-size: 19px;
+}
+#scopeFields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  max-height: 65vh;
+  overflow: auto;
+  padding: 3px;
+}
+#scopeFields .full {
+  grid-column: 1/-1;
+}
+.scopePicker {
+  display: grid;
+  gap: 5px;
+}
+.scopePicker input {
+  font-size: 12px;
+  padding: 7px;
+}
+.scopePicker select {
+  width: 100%;
+}
+#scopeError {
+  white-space: pre-wrap;
+  color: #b42318;
+  font-size: 12px;
+}
+#scopeDialogActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 15px;
+}
+.scopeDetails {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.scopeDetails dt {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #62758b;
+  font-weight: 700;
+}
+.scopeDetails dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.scopeList {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  max-height: 380px;
+  overflow: auto;
+}
+.scopeRow {
+  padding: 9px;
+  background: #f4f7fb;
+  border: 1px solid #dbe2eb;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.scopeRow button {
+  font-size: 11px;
+  padding: 4px 7px;
+  margin: 4px 4px 0 0;
+}
+.scopeRow strong {
+  display: block;
+}
+.scopeSmall {
+  font-size: 11px;
+  color: #60748a;
+}
+@media (max-width: 700px) {
+  #scopeFields {
+    grid-template-columns: 1fr;
+  }
+  #scopeToolbar select {
+    max-width: 145px;
+  }
+  #scopeBreadcrumbs {
+    font-size: 11px;
+  }
+}
+body.scope-active header {
+  height: auto;
+  min-height: 80px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+body.scope-active .toolbar {
+  flex-wrap: wrap;
+}
+body.scope-active #scopeToolbar {
+  flex: 1 1 700px;
+}
+body.scope-active .searchBox {
+  flex: 1 1 240px;
+  max-width: 400px;
+}
+body.scope-active #scopeLevel {
+  width: 260px;
+  max-width: 280px;
+}
+body.scope-active #workspace {
+  height: calc(100dvh - var(--scope-header-height, 110px));
+}
+
+.interfaceBudgetPanel {
+  padding: 12px;
+  border: 1px solid #d5dde7;
+  border-radius: 8px;
+}
+.interfaceBudgetPanel[hidden] {
+  display: none;
+}
+.interfaceBudgetPanel > div:first-of-type {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+.interfaceBudgetTotal {
+  padding-top: 8px;
+  font-size: 12px;
+}

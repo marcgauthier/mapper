@@ -1,0 +1,18 @@
+# Mapper settings. Every value can be overridden with an environment
+# variable (right column); the file holds the shared defaults.
+#
+# Supported syntax: top-level `key: value` lines, `#` comments, and the
+# nested `logging:` map below. Unknown keys are rejected so typos fail
+# loudly instead of silently changing what the server does.
+
+addr: ":8080"            # MAPPER_ADDR listen address
+store: ./data/mapper     # MAPPER_DB encrypted database store path
+
+tls_cert: ""             # MAPPER_TLS_CERT PEM certificate for HTTPS (empty disables TLS)
+tls_key: ""              # MAPPER_TLS_KEY PEM private key (must be set together with tls_cert)
+require_tls: false       # MAPPER_REQUIRE_TLS refuse to start without TLS when true
+client_ca: ""            # MAPPER_CLIENT_CA optional PEM CA verifying TLS client certificates
+
+logging:
+  dir: ./data/logs      # MAPPER_LOG_DIR action-log (loggy) directory
+  retention_days: 365   # MAPPER_LOG_RETENTION_DAYS keep the last N days of logs (1..3650)

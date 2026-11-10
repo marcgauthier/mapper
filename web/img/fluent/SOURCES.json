@@ -1,0 +1,88 @@
+{
+  "project": "Microsoft Fluent UI System Icons",
+  "repository": "https://github.com/microsoft/fluentui-system-icons",
+  "commit": "9bfae3d782fda4c8764f2128cec4d0dda160b283",
+  "license": "MIT",
+  "assets": [
+    {
+      "file": "globe.svg",
+      "name": "Globe",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Globe/SVG/ic_fluent_globe_24_regular.svg"
+    },
+    {
+      "file": "building.svg",
+      "name": "Building",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Building/SVG/ic_fluent_building_24_regular.svg"
+    },
+    {
+      "file": "door.svg",
+      "name": "Door",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Door/SVG/ic_fluent_door_24_regular.svg"
+    },
+    {
+      "file": "server.svg",
+      "name": "Server",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Server/SVG/ic_fluent_server_24_regular.svg"
+    },
+    {
+      "file": "desktop.svg",
+      "name": "Desktop",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Desktop/SVG/ic_fluent_desktop_24_regular.svg"
+    },
+    {
+      "file": "desktop-tower.svg",
+      "name": "Desktop Tower",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Desktop%20Tower/SVG/ic_fluent_desktop_tower_24_regular.svg"
+    },
+    {
+      "file": "virtual-network.svg",
+      "name": "Virtual Network",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Virtual%20Network/SVG/ic_fluent_virtual_network_24_regular.svg"
+    },
+    {
+      "file": "plug-connected.svg",
+      "name": "Plug Connected",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Plug%20Connected/SVG/ic_fluent_plug_connected_24_regular.svg"
+    },
+    {
+      "file": "flash.svg",
+      "name": "Flash",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Flash/SVG/ic_fluent_flash_24_regular.svg"
+    },
+    {
+      "file": "connector.svg",
+      "name": "Connector",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Connector/SVG/ic_fluent_connector_24_regular.svg"
+    },
+    {
+      "file": "circle.svg",
+      "name": "Circle",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Circle/SVG/ic_fluent_circle_24_regular.svg"
+    },
+    {
+      "file": "square.svg",
+      "name": "Square",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Square/SVG/ic_fluent_square_24_regular.svg"
+    },
+    {
+      "file": "rectangle-landscape.svg",
+      "name": "Rectangle Landscape",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Rectangle%20Landscape/SVG/ic_fluent_rectangle_landscape_24_regular.svg"
+    },
+    {
+      "file": "cloud.svg",
+      "name": "Cloud",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Cloud/SVG/ic_fluent_cloud_24_regular.svg"
+    },
+    {
+      "file": "text-t.svg",
+      "name": "Text T",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Text%20T/SVG/ic_fluent_text_t_24_regular.svg"
+    },
+    {
+      "file": "stack.svg",
+      "name": "Stack",
+      "url": "https://raw.githubusercontent.com/microsoft/fluentui-system-icons/9bfae3d782fda4c8764f2128cec4d0dda160b283/assets/Stack/SVG/ic_fluent_stack_24_regular.svg"
+    }
+  ]
+}

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/transport.js"></script>
+  <title>Mapper logs</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f39800'/%3E%3Ctext x='16' y='23' font-family='system-ui,sans-serif' font-size='19' font-weight='900' text-anchor='middle' fill='%2330220b'%3EM%3C/text%3E%3C/svg%3E">
+  <style>
+    :root{
+      font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+      color:#152232;background:#e9eef4;
+      --line:#d5dde7;--muted:#5c6b7e;--ink:#152232;
+      --accent:#f39800;--accent-dark:#d98700;--accent-ink:#3a2a06;
+      --radius:8px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;min-width:320px}
+    button,input,select{font:inherit;color:var(--ink)}
+    button{border:1px solid var(--line);background:#fff;border-radius:var(--radius);padding:8px 12px;cursor:pointer;white-space:nowrap}
+    button:hover{background:#f2f6fb;border-color:#b3c2d4}
+    button.primary{background:var(--accent);border-color:var(--accent-dark);color:var(--accent-ink);font-weight:650}
+    button.primary:hover{background:#ffa512}
+    input,select{border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:8px 10px;min-width:0}
+    header{min-height:60px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:8px 16px;flex-wrap:wrap}
+    .brand{font-size:16px;font-weight:750;display:flex;align-items:center;gap:9px;white-space:nowrap}
+    .brandMark{width:26px;height:26px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#30220b;font-weight:900}
+    .brand small{font-size:11px;font-weight:600;color:var(--muted)}
+    .userBox{margin-left:auto;font-size:12px;color:var(--muted)}
+    .userBox a{color:var(--ink)}
+    main{max-width:1200px;margin:0 auto;padding:18px 16px 40px}
+    .filters{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+    .filters .field{display:grid;gap:4px}
+    .filters label{font-size:12px;font-weight:650;color:#3d4c5f}
+    .filters .grow{flex:1;min-width:180px}
+    .filters .grow input{width:100%}
+    .autoRefresh{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);padding-bottom:8px}
+    .status{margin:12px 2px;font-size:12px;color:var(--muted)}
+    .status.error{color:#b42318;font-weight:600}
+    table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:13px}
+    th,td{padding:9px 11px;border-bottom:1px solid #e7ecf2;text-align:left;vertical-align:top}
+    th{background:#f1f5f9;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);white-space:nowrap}
+    tbody tr:hover{background:#f7fafd}
+    td.time{white-space:nowrap;color:var(--muted)}
+    td.action{white-space:nowrap;font-weight:650}
+    td.object{overflow-wrap:anywhere}
+    details summary{cursor:pointer;color:var(--muted)}
+    details pre{margin:8px 0 2px;max-height:260px;overflow:auto;background:#f5f8fc;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px}
+    .denied{background:#fff;border:1px solid var(--line);border-radius:12px;padding:28px;text-align:center;color:var(--muted)}
+    @media(max-width:700px){table,thead,tbody,th,td,tr{display:block}thead{display:none}tr{border-bottom:2px solid var(--line)}td{border-bottom:1px solid #eef2f6}}
+    @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="brandMark">M</span>Mapper <small id="viewTitle">User logs</small></div>
+    <div class="userBox"><span id="who"></span> · <a href="/">Back to map</a></div>
+  </header>
+  <main>
+    <div id="denied" class="denied" hidden><strong id="deniedTitle">Sign-in required.</strong><p id="deniedMessage">Sign in to view user activity. System logs require administrator access.</p><p><a href="/">Back to map</a></p></div>
+    <div id="viewer" hidden>
+      <div class="filters">
+ <div class="field"><label for="fCategory">View</label><select id="fCategory"><option value="user">User logs</option><option value="system">System logs</option></select></div>
+ <div class="field"><label for="fLevel">Severity</label><select id="fLevel"><option value="">All levels</option><option>info</option><option>warn</option><option>error</option><option>debug</option></select></div>
+        <div class="field"><label for="fActor">Actor</label><input id="fActor" placeholder="username" autocomplete="off"></div>
+        <div class="field"><label for="fAction">Action</label><select id="fAction"><option value="">All actions</option></select></div>
+        <div class="field grow"><label for="fText">Contains</label><input id="fText" placeholder="Search events…" autocomplete="off"></div>
+        <div class="field"><label for="fLimit">Rows</label><select id="fLimit"><option>100</option><option selected>200</option><option>500</option><option>1000</option></select></div>
+        <div class="field"><button id="refresh" class="primary" type="button">Refresh</button></div>
+        <label class="autoRefresh"><input id="fAuto" type="checkbox"> Auto-refresh every 15s</label>
+      </div>
+      <div id="status" class="status" role="status"></div>
+      <table aria-label="Log entries"><thead><tr><th>Time</th><th>Actor</th><th id="actionHeading">Action</th><th id="objectHeading">Item</th><th>Detail</th></tr></thead><tbody id="rows"></tbody></table>
+    </div>
+  </main>
+  <script>
+  const actions = ['object_upsert','object_delete','interface_upsert','interface_delete','link_create','link_update','link_delete','pairing_create','pairing_delete','route_replace','layout_update','undo','user_post','user_put','user_disable','http_request','import_object_upsert','import_interface_create','import_link_create','import_pairing_create','import_route_create','network_create','network_update','network_delete','connection_type_create','connection_type_update','connection_type_delete','device_type_create','device_type_update','device_type_delete'];
+  const $ = id => document.getElementById(id);
+  let timer = null;
+  fCategory.value = new URLSearchParams(location.search).get('category') === 'system' ? 'system' : 'user';
+  function syncView() { const system = fCategory.value === 'system'; $('viewTitle').textContent = system ? 'System logs' : 'User logs'; document.title = 'Mapper logs · ' + $('viewTitle').textContent; $('actionHeading').textContent = system ? 'Severity' : 'Action'; $('objectHeading').textContent = system ? 'Path' : 'Item'; fAction.parentElement.hidden = system; history.replaceState(null, '', '/logs?category=' + fCategory.value); }
+ syncView();
+  fAction.append(...actions.map(a => new Option(a, a)));
+  async function api(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw Error(await r.text() || r.statusText);
+    return r.json();
+  }
+  function setStatus(text, error) {
+    $('status').textContent = text;
+    $('status').className = 'status' + (error ? ' error' : '');
+  }
+  function render(entries) {
+    rows.replaceChildren();
+    if (!entries.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 5;
+      td.textContent = 'No matching entries in the retention window.';
+      tr.append(td);
+      rows.append(tr);
+      return;
+    }
+    for (const e of entries) {
+      const tr = document.createElement('tr');
+      const time = document.createElement('td');
+      time.className = 'time';
+      time.textContent = new Date(e.time).toLocaleString();
+      const actor = document.createElement('td');
+      actor.textContent = e.fields.actor || '';
+      const action = document.createElement('td');
+      action.className = 'action';
+      action.textContent = fCategory.value === 'system' ? e.fields.level : e.fields.action || '';
+      const object = document.createElement('td');
+      object.className = 'object';
+      let snapshot = {}; try { snapshot = JSON.parse(e.fields.detail || '{}'); } catch {}
+      object.textContent = fCategory.value === 'system' ? e.fields.path || '' : snapshot.after?.name || snapshot.before?.name || snapshot.name || e.fields.action?.replaceAll('_', ' ') || ''; 
+      const detail = document.createElement('td');
+      const raw = JSON.stringify(e.fields, null, 2);
+      if (raw) {
+        const box = document.createElement('details');
+        const summary = document.createElement('summary');
+        summary.textContent = (fCategory.value === 'system' ? e.message || '' : [e.fields.actor, e.fields.action?.replaceAll('_',' '), object.textContent].filter(Boolean).join(' ')).slice(0, 160);
+        const pre = document.createElement('pre');
+        try { pre.textContent = JSON.stringify(JSON.parse(raw), null, 2); }
+        catch { pre.textContent = raw; }
+        box.append(summary, pre);
+        detail.append(box);
+      } else {
+        detail.textContent = e.message || '';
+      }
+      tr.append(time, actor, action, object, detail);
+      rows.append(tr);
+    }
+  }
+  async function load() {
+    setStatus('Loading…');
+    try {
+      const params = new URLSearchParams({category:fCategory.value});
+      if(fLevel.value) params.set('level',fLevel.value);
+      if (fActor.value.trim()) params.set('actor', fActor.value.trim());
+      if (fAction.value) params.set('action', fAction.value);
+      if (fText.value.trim()) params.set('q', fText.value.trim());
+      params.set('limit', fLimit.value);
+      const entries = await api('/api/logs?' + params);
+      render(entries);
+      setStatus(entries.length + ' entr' + (entries.length === 1 ? 'y' : 'ies') + ', newest first.');
+    } catch (e) {
+      setStatus('Could not load logs: ' + e.message, true);
+    }
+  }
+  refresh.onclick = load;
+  fCategory.onchange = () => { fAction.value = ''; syncView(); load(); };
+  fLevel.onchange = load;
+  for (const input of [fActor, fAction, fText, fLimit]) input.onchange = load;
+  fText.onkeydown = e => { if (e.key === 'Enter') load(); };
+  fAuto.onchange = () => {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (fAuto.checked) timer = setInterval(load, 15000);
+  };
+  (async () => {
+    try {
+      const me = await api('/api/me');
+      if (me.Role !== 'admin') {
+        fCategory.querySelector('[value=system]').remove();
+        if (new URLSearchParams(location.search).get('category') === 'system') { $('deniedTitle').textContent = 'Administrators only.'; denied.hidden = false; return; }
+      }
+      who.textContent = me.User + ' · ' + me.Role;
+      viewer.hidden = false;
+      load();
+    } catch {
+      denied.hidden = false;
+    }
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <script src="/transport.js"></script>
+  <title>Unlock Mapper</title>
+  <style>
+    :root{font:15px/1.5 Inter,Roboto,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#f6f7f8;background:#090b0e;--gold:#ffd600;--muted:#aab1bb;--line:#343940}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 50% 18%,#ffd60022,transparent 32rem),linear-gradient(135deg,#07090b,#15181d 50%,#050607)}
+    .card{width:min(540px,100%);padding:clamp(25px,6vw,48px);border:1px solid #ffd60044;border-radius:14px;background:linear-gradient(180deg,#171a1f,#0d0f12);box-shadow:0 20px 60px #000b,inset 0 1px #ffffff0f}
+    .brand{display:flex;justify-content:center;align-items:center;gap:11px;margin-bottom:30px;font-size:20px;font-weight:800;letter-spacing:.04em}.brandMark{width:38px;height:38px;border-radius:11px;background:var(--gold);color:#17140a;display:grid;place-items:center;font-size:23px}
+    .heading{text-align:center;padding-bottom:23px;border-bottom:1px solid #ffffff1a}.heading h1{margin:0 0 5px;font-size:27px;letter-spacing:-.5px;color:#fff}.heading p{margin:0;color:var(--muted)}
+    .intro{margin:20px 0;color:#c5cbd2;font-size:13px}.sectionLabel{margin:23px 0 12px;color:#e9c500;font-size:11px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}
+    .field{display:grid;gap:6px;margin:13px 0}.field label{font-size:12px;font-weight:650;color:#dfe3e7}.field input{width:100%;border:1px solid #424850;border-radius:7px;background:#0b0d10;color:#f6f7f8;padding:12px 13px;font:inherit}.field input:focus{outline:2px solid #ffd60066;border-color:var(--gold)}.field input::placeholder{color:#747d87}
+    #bootstrap[hidden],#message[hidden]{display:none}.alert{min-height:0;margin:0 0 12px;padding:0;border-radius:7px;font-size:13px}.alert:not(:empty){padding:10px 12px;background:#351d1d;color:#ffb8b8;border:1px solid #763c3c}.alert.success{background:#13321d;color:#b3f3c6;border-color:#25633a}
+    button{width:100%;margin-top:18px;border:0;border-radius:7px;background:linear-gradient(90deg,#ffd600,#ffab00);color:#17140a;padding:12px 16px;font:inherit;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 3px 13px #ffd60022}button:hover{filter:brightness(1.07)}button:disabled{opacity:.65;cursor:wait}
+    .footer{border-top:1px solid #ffffff12;margin-top:28px;padding-top:17px;text-align:center;color:#717985;font-size:10px;font-weight:700;letter-spacing:.12em}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><span class="brandMark">M</span><span>MAPPER</span></div>
+    <header class="heading"><h1>Unlock database</h1><p>Enter the key to open your encrypted topology workspace.</p></header>
+    <p class="intro">The database key is required each time Mapper starts. Keep it somewhere safe; it cannot be recovered if lost.</p>
+    <div id="message" class="alert" role="alert" aria-live="polite"></div>
+    <form id="unlockForm">
+      <div class="sectionLabel">Database security</div>
+      <div class="field"><label for="databaseKey">Database encryption key</label><input id="databaseKey" type="password" required minlength="8" autocomplete="current-password" placeholder="Enter your database key"></div>
+      <section id="bootstrap" hidden aria-labelledby="bootstrapHeading">
+        <div id="bootstrapHeading" class="sectionLabel">Create the first administrator</div>
+        <p class="intro">This encrypted store has no administrator yet. Create the account you will use to sign in after unlocking.</p>
+        <div class="field"><label for="username">Administrator username</label><input id="username" autocomplete="username" minlength="3" maxlength="50" placeholder="Choose a username"></div>
+        <div class="field"><label for="password">Administrator password</label><input id="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" placeholder="At least 12 characters"></div>
+        <div class="field"><label for="passwordConfirm">Confirm administrator password</label><input id="passwordConfirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" placeholder="Enter the password again"></div>
+      </section>
+      <button id="submit" type="submit">Unlock Mapper</button>
+    </form>
+    <section class="restoreSection" aria-labelledby="restoreHeading">
+      <div id="restoreHeading" class="sectionLabel">Restore a backup</div>
+      <p class="intro">Restore is available while the database is locked. Choose a Mapper backup and enter the encryption key used when it was created.</p>
+      <div class="field"><label for="backupFile">Encrypted Mapper backup</label><input id="backupFile" type="file" accept=".murmur,application/zip"></div>
+      <button id="restoreButton" type="button">Verify and restore backup</button>
+    </section>
+    <footer class="footer">MAPPER NETWORK TOPOLOGY</footer>
+  </main>
+  <script>
+    const form=document.querySelector('#unlockForm'),keyInput=document.querySelector('#databaseKey'),bootstrap=document.querySelector('#bootstrap'),username=document.querySelector('#username'),password=document.querySelector('#password'),passwordConfirm=document.querySelector('#passwordConfirm'),message=document.querySelector('#message'),submit=document.querySelector('#submit'),backupFile=document.querySelector('#backupFile'),restoreButton=document.querySelector('#restoreButton');
+    let firstRun=false;
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();message.hidden=true;message.textContent='';
+      if(firstRun&&password.value!==passwordConfirm.value){message.textContent='The administrator passwords do not match.';message.hidden=false;passwordConfirm.focus();return}
+      submit.disabled=true;submit.textContent='Unlocking…';
+      const body={key:keyInput.value};if(firstRun){body.username=username.value.trim();body.password=password.value}
+      try{const response=await fetch('/unlock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(response.ok){message.className='alert success';message.textContent='Database unlocked. Opening Mapper…';message.hidden=false;window.location.replace('/');return}const error=await response.text();if(!firstRun&&response.status===400&&error.includes('first unlock requires')){firstRun=true;bootstrap.hidden=false;username.required=true;password.required=true;passwordConfirm.required=true;message.textContent='Set up the first administrator to finish initializing this database.';username.focus()}else{message.textContent=error}message.hidden=false}catch(error){message.textContent='Could not reach the Mapper server. '+error.message;message.hidden=false}finally{submit.disabled=false;submit.textContent=firstRun?'Initialize and unlock':'Unlock Mapper'}
+    });
+    restoreButton.addEventListener('click',async()=>{
+      message.className='alert';message.hidden=true;message.textContent='';
+      if(!backupFile.files.length){message.textContent='Choose a Mapper backup file first.';message.hidden=false;backupFile.focus();return}
+      if(keyInput.value.length<8){message.textContent='Enter the database key for this backup.';message.hidden=false;keyInput.focus();return}
+      if(!window.confirm('Restore this backup? The current database will be replaced after the backup is verified.'))return;
+      restoreButton.disabled=true;restoreButton.textContent='Verifying and restoring…';
+      try{const body=new FormData();body.set('key',keyInput.value);body.set('backup',backupFile.files[0]);const response=await fetch('/restore',{method:'POST',body});if(!response.ok)throw Error(await response.text());message.className='alert success';message.textContent='Backup restored. Unlock Mapper with the same database key to continue.';keyInput.value='';backupFile.value=''}catch(error){message.textContent=error.message||'Backup restore failed.'}finally{message.hidden=false;restoreButton.disabled=false;restoreButton.textContent='Verify and restore backup'}
+    });
+    keyInput.focus();
+  </script>
+</body>
+</html>
