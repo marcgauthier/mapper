@@ -1,4 +1,4 @@
-module mapper
+module github.com/marcgauthier/mapper
 
 go 1.26.5
 

@@ -1,8 +1,4 @@
-.scope-active .toolbar > #siteFilter,
-.scope-active .toolbar > #buildingFilter,
-.scope-active .toolbar > #roomFilter,
-.scope-active .toolbar > #networkFilter,
-.scope-active .toolbar > .select2 {
+.scope-active #menuFilterSection {
   display: none !important;
 }
 #scopeToolbar {
@@ -26,8 +22,8 @@
   gap: 4px;
   max-width: calc(100% - 30px);
   padding: 5px 8px;
-  background: #fffef4ee;
-  border: 1px solid #ddd6c3;
+  background: #ffffffed;
+  border: 1px solid #dce3eb;
   border-radius: 9px;
 }
 #scopeBreadcrumbs button {
@@ -156,17 +152,11 @@
   }
 }
 body.scope-active header {
-  height: auto;
-  min-height: 80px;
-  flex-wrap: wrap;
-  padding-top: 8px;
-  padding-bottom: 8px;
-}
-body.scope-active .toolbar {
-  flex-wrap: wrap;
-}
-body.scope-active #scopeToolbar {
-  flex: 1 1 700px;
+  height: 46px;
+  min-height: 46px;
+  flex-wrap: nowrap;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 body.scope-active .searchBox {
   flex: 1 1 240px;
@@ -177,7 +167,8 @@ body.scope-active #scopeLevel {
   max-width: 280px;
 }
 body.scope-active #workspace {
-  height: calc(100dvh - var(--scope-header-height, 110px));
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .interfaceBudgetPanel {

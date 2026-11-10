@@ -82,8 +82,8 @@ window.vrfUI = (() => {
       full: true,
       help:
         kind === "router"
-          ? "All device VRFs includes VRFs added later. Choose specific VRFs to limit this interface. Declare VRFs in Edit item."
-          : "Choose one of the VRFs declared in Edit item, or use the default routing table.",
+          ? "All device VRFs includes VRFs added later. Choose specific VRFs to limit this interface. Declare VRFs with right-click → Edit on the device."
+          : "Choose one of the VRFs declared with right-click → Edit on the device, or use the default routing table.",
     });
     return fields;
   }

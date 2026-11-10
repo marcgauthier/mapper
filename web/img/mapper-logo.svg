@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 72">
+  <defs>
+    <linearGradient id="mapper-logo-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#1e3a8a"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <rect x="4" y="6" width="60" height="60" rx="15" fill="url(#mapper-logo-bg)"/>
+    <polyline points="21,47 21,26 34,36 47,26 47,47" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <g fill="#ffffff">
+      <circle cx="21" cy="47" r="6.1"/>
+      <circle cx="21" cy="26" r="6.1"/>
+      <circle cx="34" cy="36" r="6.1"/>
+      <circle cx="47" cy="26" r="6.1"/>
+      <circle cx="47" cy="47" r="6.1"/>
+    </g>
+  </g>
+  <text x="76" y="38" font-family="Inter,Roboto,'Segoe UI',system-ui,sans-serif" font-size="30" font-weight="800" letter-spacing="1" fill="#172554">MAPPER</text>
+  <text x="77" y="56" font-family="Inter,Roboto,'Segoe UI',system-ui,sans-serif" font-size="10.5" font-weight="700" letter-spacing="3.1" fill="#64748b">NETWORK TOPOLOGY</text>
+</svg>

@@ -3,25 +3,40 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="/img/mapper-mark.svg" type="image/svg+xml">
   <script src="/transport.js"></script>
   <title>Unlock Mapper</title>
   <style>
-    :root{font:15px/1.5 Inter,Roboto,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#f6f7f8;background:#090b0e;--gold:#ffd600;--muted:#aab1bb;--line:#343940}
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 50% 18%,#ffd60022,transparent 32rem),linear-gradient(135deg,#07090b,#15181d 50%,#050607)}
-    .card{width:min(540px,100%);padding:clamp(25px,6vw,48px);border:1px solid #ffd60044;border-radius:14px;background:linear-gradient(180deg,#171a1f,#0d0f12);box-shadow:0 20px 60px #000b,inset 0 1px #ffffff0f}
-    .brand{display:flex;justify-content:center;align-items:center;gap:11px;margin-bottom:30px;font-size:20px;font-weight:800;letter-spacing:.04em}.brandMark{width:38px;height:38px;border-radius:11px;background:var(--gold);color:#17140a;display:grid;place-items:center;font-size:23px}
-    .heading{text-align:center;padding-bottom:23px;border-bottom:1px solid #ffffff1a}.heading h1{margin:0 0 5px;font-size:27px;letter-spacing:-.5px;color:#fff}.heading p{margin:0;color:var(--muted)}
-    .intro{margin:20px 0;color:#c5cbd2;font-size:13px}.sectionLabel{margin:23px 0 12px;color:#e9c500;font-size:11px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}
-    .field{display:grid;gap:6px;margin:13px 0}.field label{font-size:12px;font-weight:650;color:#dfe3e7}.field input{width:100%;border:1px solid #424850;border-radius:7px;background:#0b0d10;color:#f6f7f8;padding:12px 13px;font:inherit}.field input:focus{outline:2px solid #ffd60066;border-color:var(--gold)}.field input::placeholder{color:#747d87}
-    #bootstrap[hidden],#message[hidden]{display:none}.alert{min-height:0;margin:0 0 12px;padding:0;border-radius:7px;font-size:13px}.alert:not(:empty){padding:10px 12px;background:#351d1d;color:#ffb8b8;border:1px solid #763c3c}.alert.success{background:#13321d;color:#b3f3c6;border-color:#25633a}
-    button{width:100%;margin-top:18px;border:0;border-radius:7px;background:linear-gradient(90deg,#ffd600,#ffab00);color:#17140a;padding:12px 16px;font:inherit;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 3px 13px #ffd60022}button:hover{filter:brightness(1.07)}button:disabled{opacity:.65;cursor:wait}
-    .footer{border-top:1px solid #ffffff12;margin-top:28px;padding-top:17px;text-align:center;color:#717985;font-size:10px;font-weight:700;letter-spacing:.12em}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#172554 0%,#1e40af 100%);font:15px/1.5 Inter,Roboto,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;padding:20px;color:#172331}
+    .card{width:100%;max-width:540px;background:#fff;border-radius:10px;box-shadow:0 8px 32px #0009;padding:32px}
+    .brand{display:flex;justify-content:center;margin-bottom:20px}
+    .brand img{max-height:80px;max-width:100%;width:auto;height:auto;object-fit:contain}
+    .heading{text-align:center;padding-bottom:20px;border-bottom:1px solid #e2e8f0}
+    .heading h1{margin:0 0 5px;font-size:24px;letter-spacing:-.5px;color:#172554}
+    .heading p{margin:0;color:#64748b}
+    .intro{margin:16px 0;color:#475569;font-size:13px}
+    .sectionLabel{margin:20px 0 10px;color:#1d4ed8;font-size:11px;font-weight:800;letter-spacing:.11em;text-transform:uppercase}
+    .field{display:grid;gap:6px;margin:12px 0}
+    .field label{font-size:.9rem;font-weight:600}
+    .field input{width:100%;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#172331;padding:11px 12px;font:inherit}
+    .field input:focus{outline:2px solid #93c5fd;border-color:#2563eb}
+    .field input::placeholder{color:#94a3b8}
+    #bootstrap[hidden],#message[hidden]{display:none}
+    .alert{min-height:0;margin:0 0 12px;padding:0;border-radius:8px;font-size:13px}
+    .alert:not(:empty){padding:10px 12px;background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
+    .alert.success{background:#f0fdf4;color:#15803d;border-color:#bbf7d0}
+    button{width:100%;margin-top:14px;border:0;border-radius:8px;background:#1e40af;color:#fff;padding:12px 16px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+    button:hover{background:#1d4ed8}
+    button:disabled{opacity:.6;cursor:wait}
+    #restoreButton{background:#fff;color:#1e40af;border:1px solid #1e40af}
+    #restoreButton:hover{background:#eff6ff}
+    .footer{border-top:1px solid #e2e8f0;margin-top:24px;padding-top:16px;text-align:center;color:#94a3b8;font-size:10px;font-weight:700;letter-spacing:.12em}
   </style>
 </head>
 <body>
   <main class="card">
-    <div class="brand"><span class="brandMark">M</span><span>MAPPER</span></div>
+    <div class="brand"><img src="/img/mapper-logo.svg" alt="Mapper"></div>
     <header class="heading"><h1>Unlock database</h1><p>Enter the key to open your encrypted topology workspace.</p></header>
     <p class="intro">The database key is required each time Mapper starts. Keep it somewhere safe; it cannot be recovered if lost.</p>
     <div id="message" class="alert" role="alert" aria-live="polite"></div>

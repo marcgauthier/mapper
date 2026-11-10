@@ -1,6 +1,6 @@
 maintain a file called VENDORS.md that list all the external dependencies for the backend and frontend in production.
 
-maintain a file PLAN.md that contains all the features and technical details of the application.
+maintain README.md with all the features and technical details of the application.
 
 Try to limit external dependencies and use custom code when possible 
 if custom code is not the best option try to use library supported by large corporation like google, aws, microsoft, etc.

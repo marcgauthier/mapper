@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="/transport.js"></script>
   <title>Mapper logs</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23f39800'/%3E%3Ctext x='16' y='23' font-family='system-ui,sans-serif' font-size='19' font-weight='900' text-anchor='middle' fill='%2330220b'%3EM%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="/img/mapper-mark.svg" type="image/svg+xml">
   <style>
     :root{
       font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
@@ -24,7 +24,7 @@
     input,select{border:1px solid var(--line);border-radius:var(--radius);background:#fff;padding:8px 10px;min-width:0}
     header{min-height:60px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:8px 16px;flex-wrap:wrap}
     .brand{font-size:16px;font-weight:750;display:flex;align-items:center;gap:9px;white-space:nowrap}
-    .brandMark{width:26px;height:26px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#30220b;font-weight:900}
+    .brand img{display:block}
     .brand small{font-size:11px;font-weight:600;color:var(--muted)}
     .userBox{margin-left:auto;font-size:12px;color:var(--muted)}
     .userBox a{color:var(--ink)}
@@ -53,7 +53,7 @@
 </head>
 <body>
   <header>
-    <div class="brand"><span class="brandMark">M</span>Mapper <small id="viewTitle">User logs</small></div>
+    <div class="brand"><img src="/img/mapper-mark.svg" alt="Mapper logo" width="26" height="26">Mapper <small id="viewTitle">User logs</small></div>
     <div class="userBox"><span id="who"></span> · <a href="/">Back to map</a></div>
   </header>
   <main>

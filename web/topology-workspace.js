@@ -31,7 +31,7 @@ const topologyWorkspace = (() => {
     cable: "Connect cable/interfaces",
     interface: "Add interface",
     relationship: "Add relationship",
-    attachment: "Connect Internet/MPLS service",
+    attachment: "Connect Internet/MPLS/PLS service",
     assign_cable: "Assign existing cable",
   };
   const categories = {
@@ -44,6 +44,18 @@ const topologyWorkspace = (() => {
     cloud_resource: "Hosted resource",
     internet: "Internet",
     mpls: "MPLS",
+    pls: "PLS",
+  };
+  const siteRoles = {
+    data_center: { label: "Data Centre", icon: "/img/mapper/server.svg" },
+    major_site: { label: "Major Users Site", icon: "/img/mapper/campus.svg" },
+    branch_office: { label: "Branch Office", icon: "/img/site-branch.svg" },
+    edge_site: { label: "Edge / Local Site", icon: "/img/site-edge.svg" },
+    disaster_recovery: {
+      label: "Disaster Recovery Site",
+      icon: "/img/site-dr.svg",
+    },
+    cloud_colo: { label: "Cloud / Colocation", icon: "/img/mapper/cloud.svg" },
   };
   let viewport = {},
     dragging = false,
@@ -64,6 +76,7 @@ const topologyWorkspace = (() => {
     deferred = false,
     loading = false,
     savedCamera = null;
+  let confirmingConnection = false;
   try {
     scope = JSON.parse(localStorage.getItem("mapper_scope")) || scope;
     history = JSON.parse(localStorage.getItem("mapper_scope_history")) || [];
@@ -73,7 +86,145 @@ const topologyWorkspace = (() => {
   toolbar.id = "scopeToolbar";
   toolbar.innerHTML =
     '<select id="scopeLevel" aria-label="Topology level"></select><button id="scopeBack" title="Back to previous view">←</button><button id="scopeOpen">Open…</button><select id="scopeCategory" aria-label="Service category"><option value="">All service categories</option></select><select id="scopeRoomType" aria-label="Room type"><option value="">All room types</option><option value="room">Ordinary rooms</option><option value="telecom_room">Telecom rooms</option></select><select id="scopeNetwork" aria-label="Network"><option value="">All networks</option></select><select id="scopeCreate" aria-label="Create in current view"><option value="">Create…</option></select>';
-  $(".toolbar").prepend(toolbar);
+  $("#menuViewControls").append(toolbar);
+  const qualityButton = document.createElement("button");
+  qualityButton.textContent = "Data quality";
+  qualityButton.id = "networkQuality";
+  toolbar.append(qualityButton);
+  qualityButton.onclick = () => showNetworkQuality(0).catch(error);
+  async function showNetworkQuality(offset, filters = {}) {
+    const result = await request("/api/topology/quality?" + new URLSearchParams({offset,...filters}));
+    dialog.replaceChildren();
+    const heading = document.createElement("h2");
+    heading.textContent = "Network and VRF data quality";
+    const summary = document.createElement("p");
+    summary.textContent = `${result.total} findings · inventory sequence ${result.sequence}. Address reuse across networks/VRFs may be intentional. VRF names are local to devices; matching names do not prove a shared routing domain.`;
+    dialog.append(heading, summary);
+    for (const issue of result.issues) {
+      const section = document.createElement("section");
+      const title = document.createElement("h3");
+      title.textContent = ({ address_reuse: "Address reuse", duplicate_ip: "Duplicate in network / named VRF", deleted_vrf: "Undeclared VRF assignment", invalid_ip: "Invalid IP address" })[issue.kind] + (issue.address ? " · " + issue.address : "") + (issue.scope ? " · " + issue.scope : "");
+      section.append(title);
+      for (const port of issue.ports) {
+        const row = document.createElement("p");
+        row.textContent = `${port.device} / ${port.name} · network: ${port.network || "unclassified"} · VRFs: ${port.vrfs.join(", ") || "default/global"} · ${port.ip || ""}` + (port.missing_vrfs?.length ? " · undeclared: " + port.missing_vrfs.join(", ") : "");
+        section.append(row);
+      }
+      if (issue.port_count > issue.ports.length) {
+        const note = document.createElement("p");
+        note.textContent = `Showing ${issue.ports.length} of ${issue.port_count} interfaces.`;
+        section.append(note);
+        const nextOffset=Number(filters.port_offset||0)+issue.ports.length;
+        if(nextOffset<issue.port_count){const more=document.createElement("button");more.textContent="Next interfaces";more.onclick=()=>showNetworkQuality(0,{kind:issue.kind,address:issue.address||"",scope:issue.scope||"",port_offset:nextOffset,sequence:result.sequence}).catch(error);section.append(more)}
+      }
+      dialog.append(section);
+    }
+    const actions = document.createElement("div");
+    for (const [label, action] of [["Refresh", () => showNetworkQuality(0)], ...(offset ? [["Previous", () => showNetworkQuality(Math.max(0, offset - 100))]] : []), ...(result.next_offset < result.total ? [["Next", () => showNetworkQuality(result.next_offset)]] : []), ["Close", () => dialog.close()]]) {
+      const button = document.createElement("button");
+      button.textContent = label;
+      button.onclick = () => Promise.resolve(action()).catch(error);
+      actions.append(button);
+    }
+    dialog.append(actions);
+    if (!dialog.open) dialog.showModal();
+  }
+  const vrfInput = document.createElement("input");
+  vrfInput.id = "scopeVRF";
+  vrfInput.placeholder = "VRF name";
+  vrfInput.setAttribute("aria-label", "VRF name");
+  const vrfSuggestions=document.createElement("datalist");vrfSuggestions.id="vrfSuggestions";toolbar.append(vrfSuggestions);vrfInput.setAttribute("list","vrfSuggestions");
+  const vrfMode = document.createElement("select");
+  vrfMode.id = "scopeVRFMode";
+  vrfMode.setAttribute("aria-label", "VRF overlay mode");
+  vrfMode.append(new Option("VRF overlay off", ""), new Option("Color selected VRF", "color"), new Option("Filter selected VRF", "filter"));
+  const vrfLegend = document.createElement("span");
+  vrfLegend.id = "vrfLegend";
+  toolbar.append(vrfInput, vrfMode, vrfLegend);
+  for (const control of [vrfInput, vrfMode]) control.onchange = () => refresh().catch(error);
+  const traceVRFButton = document.createElement("button");
+  traceVRFButton.id = "traceVRF";
+  traceVRFButton.textContent = "VRF path";
+  traceVRFButton.onclick = () => {
+    const f = form("VRF path between interfaces", [
+      {key:"vrf", label:"VRF name", required:true, value:vrfInput.value},
+      {key:"source", label:"Source device", required:true, picker:{kinds:"device,virtual_switch"}},
+      {key:"source_port", label:"Source interface", required:true, options:[]},
+      {key:"target", label:"Destination device", required:true, picker:{kinds:"device,virtual_switch"}},
+      {key:"target_port", label:"Destination interface", required:true, options:[]},
+    ], async v => {
+      const result = await request("/api/trace?" + new URLSearchParams({interface_id:v.source_port,target_interface_id:v.target_port,vrf:v.vrf}));
+      const report = document.createElement("div");
+      const title = document.createElement("h2");
+      title.textContent = result.reachable ? "VRF path found" : "No modeled VRF path";
+      const note = document.createElement("p");
+      note.textContent = result.interpretation;
+      report.append(title,note);
+      for (const step of result.steps) {
+        const row = document.createElement("p");
+        row.textContent = `${step.kind}: ${step.from_name} → ${step.to_name}`;
+        report.append(row);
+      }
+      const close = document.createElement("button"); close.textContent="Close";close.onclick=()=>dialog.close();
+      dialog.replaceChildren(report,close);
+    });
+    f.actions.querySelector(".primary").textContent="Trace";
+    f.inputs.source.onchange = () => populatePorts(f.inputs.source_port,f.inputs.source.value).catch(error);
+    f.inputs.target.onchange = () => populatePorts(f.inputs.target_port,f.inputs.target.value).catch(error);
+  };
+  toolbar.append(traceVRFButton);
+  const snapshotButton = document.createElement("button");
+  snapshotButton.id="saveTopologySnapshot";
+  snapshotButton.textContent="Save snapshot";
+  snapshotButton.onclick=async()=>{
+    try {
+      const snapshot=await request("/api/topology/snapshot?"+new URLSearchParams({network:$("#scopeNetwork").value}));
+      const url=URL.createObjectURL(new Blob([JSON.stringify(snapshot)],{type:"application/json"}));
+      const link=document.createElement("a");link.href=url;link.download=`mapper-topology-${snapshot.sequence}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    } catch(e) {error(e)}
+  };
+  const compareButton=document.createElement("button");
+  compareButton.id="compareNetworks";compareButton.textContent="Compare";
+  compareButton.onclick=()=>{
+    const networkOptions=networkInventory.map(n=>({value:n.id,label:n.name}));
+    const f=form("Compare networks or saved snapshots",[
+      {key:"mode",label:"Comparison",options:[{value:"networks",label:"Two current networks"},{value:"snapshots",label:"Two saved snapshot files"}]},
+      {key:"before_network",label:"Before network",options:networkOptions,empty:"Choose network"},
+      {key:"after_network",label:"After network",options:networkOptions,empty:"Choose network"},
+      {key:"before_file",label:"Before snapshot JSON",type:"file"},
+      {key:"after_file",label:"After snapshot JSON",type:"file"},
+    ],async(v,inputs)=>{
+      let payload=null;
+      if(v.mode==="snapshots") {
+        const read=async input=>{if(!input.files[0])throw Error("Choose both snapshot files");return JSON.parse(await input.files[0].text())};
+        payload={before:await read(inputs.before_file),after:await read(inputs.after_file)};
+      } else if(!v.before_network || !v.after_network) throw Error("Choose both networks");
+      const load=async(cursor="",sequence="")=>{
+        const params=new URLSearchParams({before_network:v.before_network,after_network:v.after_network,after:cursor,sequence});
+        const result=await request("/api/topology/compare?"+params,payload?json("POST",payload):{});
+        dialog.replaceChildren();
+        const h=document.createElement("h2");h.textContent="Topology comparison";
+        const summary=document.createElement("p");summary.textContent=`${result.total} changes · `+Object.entries(result.counts).map(([kind,count])=>`${kind}: ${count}`).join(" · ");
+        const note=document.createElement("p");note.textContent="Matches use stable inventory IDs. Equal names alone do not match different devices. Moved includes location, network, host, and diagram-position changes.";
+        dialog.append(h,summary,note);
+        for(const change of result.changes){
+          const d=document.createElement("details"),title=document.createElement("summary"),body=document.createElement("pre");
+          const entity=change.after||change.before;
+          title.textContent=`${change.type}: ${entity.name||entity.kind} (${entity.kind})`;
+          body.textContent=JSON.stringify({before:change.before,after:change.after},null,2);
+          d.append(title,body);dialog.append(d);
+        }
+        const close=document.createElement("button");close.textContent="Close";close.onclick=()=>dialog.close();dialog.append(close);
+        if(result.next_cursor){const next=document.createElement("button");next.textContent="Next changes";next.onclick=()=>load(result.next_cursor,String(result.after_sequence)).catch(error);dialog.append(next)}
+      };
+      await load();
+    });
+    f.actions.querySelector(".primary").textContent="Compare";
+    const update=()=>{for(const key of ["before_network","after_network","before_file","after_file"])f.inputs[key].closest(".field").hidden=(key.endsWith("file")!==(f.inputs.mode.value==="snapshots"))};
+    f.inputs.mode.onchange=update;update();
+  };
+  toolbar.append(snapshotButton,compareButton);
+
   document.body.classList.add("scope-active");
   $("#scopeLevel").append(
     ...Object.entries(labels).map(([v, t]) => new Option(t, v)),
@@ -109,6 +260,7 @@ const topologyWorkspace = (() => {
       scope_kind: scope.kind,
       scope_id: scope.id,
       network: $("#scopeNetwork").value,
+      vrf: vrfMode.value === "filter" ? vrfInput.value.trim() : "",
       service_category: $("#scopeCategory").value,
       room_type: $("#scopeRoomType").value,
       ...viewport,
@@ -126,7 +278,7 @@ const topologyWorkspace = (() => {
   async function request(path, opt = {}) {
     const response = await fetch(path, opt);
     if (response.status === 401) {
-      loginBox.hidden = false;
+      location.replace("/login");
       throw Error("Sign in to continue");
     }
     if (!response.ok) {
@@ -280,6 +432,7 @@ const topologyWorkspace = (() => {
     f.append(h, grid, err, actions);
     f.onsubmit = async (e) => {
       e.preventDefault();
+      if (save.disabled) return;
       save.disabled = true;
       err.textContent = "";
       try {
@@ -496,29 +649,16 @@ const topologyWorkspace = (() => {
       b.onclick = () => inspect(scene.scope);
       breadcrumbs.append(b);
     }
-    notice.textContent = `${labels[scope.kind]} · ${scene.node_count} items · ${scene.edge_count} connections${page ? " · More items available" : ""}. Click a container to enter it.`;
+    if (Date.now() >= noticeHoldUntil)
+      notice.textContent = `${labels[scope.kind]} · ${scene.node_count} items · ${scene.edge_count} connections${page ? " · More items available" : ""}. Double-click a container to enter it.`;
   }
   function icon(o) {
-    if (o.kind === "service") {
-      const cat = o.data.service_category,
-        visual = ["saas", "paas", "iaas", "faas"].includes(cat) ? cat : "cloud";
-      return "/img/" + (visual === "cloud" ? "fluent/cloud" : visual) + ".svg";
-    }
-    if (o.kind === "generator" || o.kind === "ups")
-      return "/img/fluent/flash.svg";
-    if (o.kind === "floor") return "/img/fluent/stack.svg";
-    if (o.kind === "room") return "/img/fluent/door.svg";
-    if (o.kind === "outlet")
-      return (
-        "/img/fluent/" +
-        (o.data.outlet_type === "fiber" ? "flash" : "plug-connected") +
-        ".svg"
-      );
     return itemIcons.item(o);
   }
   function render(fit = false) {
     const old =
       cy && !cy.destroyed() ? { zoom: cy.zoom(), pan: cy.pan() } : null;
+    if (!editor()) connectionGesture.cancel(false);
     const elements = [];
     let i = 0;
     for (const o of nodes.values()) {
@@ -528,6 +668,7 @@ const topologyWorkspace = (() => {
           ? { x: o.x, y: o.y }
           : { x: 180 + (i % 5) * 240, y: 160 + Math.floor(i / 5) * 180 });
       i++;
+      const symbol = icon(o);
       elements.push({
         data: {
           id: o.id,
@@ -541,12 +682,14 @@ const topologyWorkspace = (() => {
                 ? "\n" + o.count + " items"
                 : ""),
           kind: o.kind,
-          icon: icon(o),
+          icon: symbol,
           ...(o.parent && nodes.has(o.parent) ? { parent: o.parent } : {}),
         },
         position,
         classes: [
           o.kind,
+          symbol.includes("/cisco/") ? "cisco-symbol" : "mapper-symbol",
+          ["site", "building", "floor", "rack", "service"].includes(o.kind) ? "map-container" : "",
           o.boundary ? "boundary" : "",
           o.parent ? "member" : "",
           o.warning ? "incomplete" : "",
@@ -605,45 +748,78 @@ const topologyWorkspace = (() => {
           },
         },
         {
-          selector: "node.site",
+          selector: "node.mapper-symbol",
           style: {
-            width: 135,
-            height: 95,
-            "background-color": "#fff0cc",
-            "border-color": "#d59b32",
+            "background-fit": "none",
+            "background-width": 28,
+            "background-height": 28,
           },
         },
         {
-          selector: "node.building",
-          style: { width: 125, height: 90, "background-color": "#e0efff" },
+          selector: "node.map-container",
+          style: {
+            width: 176,
+            height: 68,
+            "background-color": "#ffffff",
+            "background-width": 26,
+            "background-height": 26,
+            "background-position-x": "14px",
+            "background-position-y": "50%",
+            "border-width": 1.25,
+            "border-color": "#b6c6d5",
+            shape: "round-rectangle",
+            color: "#334155",
+            "font-size": 12,
+            "font-weight": 500,
+            "text-valign": "center",
+            "text-margin-x": 17,
+            "text-margin-y": 0,
+            "text-max-width": 112,
+            "text-justification": "left",
+          },
+        },
+        {
+          selector: "node.site",
+          style: { "background-color": "#f8fbff", "border-color": "#a6bdd2" },
         },
         {
           selector: "node.service",
+          style: { "background-color": "#f8faff", "border-color": "#b6c2d8" },
+        },
+        {
+          selector: "node.room, node.telecom_room",
           style: {
-            shape: "ellipse",
-            width: 130,
-            height: 90,
-            "background-color": "#efe6ff",
-            "border-color": "#9872bf",
+            width: 144,
+            height: 64,
+            "background-image": "none",
+            "background-color": "#f8fafc",
+            "border-color": "#c5d0dc",
+            "border-width": 1,
+            color: "#475569",
+            "font-size": 12,
+            "font-weight": 500,
+            "text-valign": "center",
+            "text-margin-x": 0,
+            "text-margin-y": 0,
+            "text-max-width": 124,
           },
         },
-        { selector: "node.room", style: { "background-color": "#e5f8ef" } },
         {
           selector: "node.telecom_room",
-          style: { "background-color": "#dceeff", "border-color": "#3789c5" },
+          style: { "background-color": "#eff5fa", "border-color": "#9bb2c7" },
         },
-        { selector: "node.rack", style: { "background-color": "#e0e8f2" } },
         {
           selector: "node.floor:parent",
           style: {
-            "background-opacity": 0.25,
-            "background-position-x": "10px",
-            "background-position-y": "8px",
-            "background-width": 24,
-            "background-height": 24,
+            "background-image": "none",
+            "background-color": "#f1f5f9",
+            "background-opacity": 0.5,
+            "border-color": "#cbd5e1",
             "text-valign": "top",
-            "text-margin-y": -8,
-            padding: 35,
+            "text-margin-x": 0,
+            "text-margin-y": -9,
+            "text-max-width": 220,
+            padding: 30,
             "min-width": 220,
             "min-height": 160,
           },
@@ -678,7 +854,7 @@ const topologyWorkspace = (() => {
         },
         {
           selector: "node.generator, node.ups",
-          style: { "background-color": "#fff3c4", "border-color": "#b7791f" },
+          style: { "background-color": "#fffcf5", "border-color": "#cfba92", "background-width": 28, "background-height": 28 },
         },
         {
           selector: "edge.conduit",
@@ -694,6 +870,22 @@ const topologyWorkspace = (() => {
           },
         },
         {
+          selector: "node.palette-drop-target",
+          style: {"border-color":"#0284c7","border-width":3},
+        },
+        {
+          selector: "node.palette-drop-invalid",
+          style: {"border-color":"#dc2626","border-width":3},
+        },
+        {
+          selector: "node.highlighted",
+          style: {"border-color":"#f39800","border-width":5},
+        },
+        {
+          selector: "node.connection-source, node.connection-target",
+          style: {"border-color":"#0284c7","border-width":3},
+        },
+        {
           selector: ":selected",
           style: {
             "overlay-color": "#f39800",
@@ -703,6 +895,15 @@ const topologyWorkspace = (() => {
         },
       ],
     });
+    vrfSuggestions.replaceChildren(...[...new Set([...nodes.values()].flatMap(o=>o.vrfs||[]))].sort().slice(0,256).map(name=>new Option(name,name)));
+    const selectedVRF = vrfInput.value.trim();
+    vrfLegend.textContent = vrfMode.value && selectedVRF ? `Blue: ${selectedVRF} participant · names are device-local` : "";
+    if (vrfMode.value && selectedVRF) {
+      cy.nodes().forEach(node => {
+        const member = nodes.get(node.id())?.vrfs?.includes(selectedVRF);
+        node.style({"border-color": member ? "#0077cc" : "#aeb8c4", "border-width": member ? 5 : 1, "opacity": member ? 1 : 0.35});
+      });
+    }
     zoomControls.bind(cy);
     navigatorView.bind(cy);
     const camera = savedCamera || (!fit ? old : null);
@@ -717,7 +918,9 @@ const topologyWorkspace = (() => {
         if (scene?.node_count > 500) refresh(false, false, true);
       }, 200);
     });
+    connectionGesture.bind(cy, {kind:scope.kind,id:scope.id});
     cy.on("tap", "node", (e) => {
+      if (connectionGesture.choose(e.target)) return;
       const o = nodes.get(e.target.id());
       if (!o) return;
       if (
@@ -729,27 +932,86 @@ const topologyWorkspace = (() => {
         cableForm(selected, o);
         return;
       }
-      if (labels[o.kind]) navigate(o.kind, o.id);
-      else inspect(o);
+      inspect(o);
+    });
+    cy.on("dbltap", "node", (e) => {
+      if (connectionGesture.suppressDoubleTap) return;
+      const marker = e.target.data("draft_container");
+      if (marker) { queueMicrotask(() => navigate(e.target.data("kind"),marker).catch(error)); return; }
+      const o = nodes.get(e.target.id());
+      // Cytoscape releases grabbed nodes after emitting dbltap. Defer until
+      // release so navigation's drag guard does not reject a normal click.
+      if (!o || e.originalEvent?.shiftKey) return;
+      if (labels[o.kind])
+        queueMicrotask(() => navigate(o.kind, o.id).catch(error));
+      else if (editor())
+        queueMicrotask(() => objectForm(o.kind, o).catch(error));
     });
     cy.on("tap", "edge", (e) => {
       const edge = edges.get(e.target.id());
-      if (edge?.category === "conduit") navigate("conduit", edge.object_id);
-      else if (edge?.category === "power") inspect(nodes.get(edge.object_id));
+      if (edge?.category === "power") inspect(nodes.get(edge.object_id));
       else if (edge) summary(edge);
+    });
+    cy.on("dbltap", "edge", (e) => {
+      const edge = edges.get(e.target.id());
+      if (edge?.category === "conduit" && !e.originalEvent?.shiftKey)
+        queueMicrotask(() => navigate("conduit", edge.object_id).catch(error));
     });
     cy.on("grab", "node", () => (dragging = true));
     cy.on("free", "node", () => {
       dragging = false;
     });
     cy.on("dragfree", "node", () => savePositions());
-    cy.on("cxttap", (e) => context(e));
+    cy.on("cxttap", (e) => {
+      if (connectionGesture.active) { connectionGesture.cancel(); return; }
+      context(e);
+    });
+  }
+  let physicsRunning = false;
+  let noticeHoldUntil = 0;
+  async function physicsLayout() {
+    if (!editor() || physicsRunning) return;
+    if (!cy || cy.destroyed()) return;
+    const targets = cy.nodes().filter((n) => !n.isParent() && !n.data("draft_transient") && n.visible());
+    if (targets.length < 2) {
+      notice.textContent = "Nothing to arrange.";
+      return;
+    }
+    physicsRunning = true;
+    notice.textContent = "Arranging with physics…";
+    try {
+      const layout = targets.layout({
+        name: "cose",
+        animate: true,
+        animationDuration: 900,
+        randomize: false,
+        nodeRepulsion: 800000,
+        idealEdgeLength: 320,
+        edgeElasticity: 100,
+        nestingFactor: 6,
+        gravity: 25,
+        numIter: 1200,
+        nodeOverlap: 20,
+        componentSpacing: 140,
+      });
+      const done = layout.promiseOn("layoutstop");
+      layout.run();
+      await done;
+      fitView();
+      await savePositions();
+      noticeHoldUntil = Date.now() + 8000;
+      notice.textContent = "Physics layout applied.";
+    } catch (e) {
+      error(e);
+    } finally {
+      physicsRunning = false;
+    }
   }
   async function savePositions() {
     if (!editor() || !scene) return;
     const positions = cy
       .nodes()
-      .filter((n) => !n.isParent())
+      .filter((n) => !n.isParent() && !n.data("draft_transient"))
       .map((n) => ({ id: n.id(), ...n.position() }));
     try {
       await request(
@@ -806,35 +1068,9 @@ const topologyWorkspace = (() => {
       ["outlet_type", "Outlet type"],
     ])
       detail(label, o.data[key]);
+    if (o.kind === "site")
+      detail("Site role", siteRoles[o.data.site_role]?.label || "Not set");
     if (o.warning) detail("Needs attention", o.warning);
-    if (labels[o.kind]) action("Open " + o.name, () => navigate(o.kind, o.id));
-    if (editor()) {
-      action("Edit item", () => objectForm(o.kind, o));
-      action("Delete item", async () => {
-        if (!confirm("Delete " + o.name + "?")) return;
-        await request("/api/objects?id=" + encodeURIComponent(o.id), {
-          method: "DELETE",
-        });
-        selected = null;
-        await refresh();
-      });
-      if (
-        o.kind === "device" &&
-        [
-          "cloud",
-          "cloud-provider",
-          "aws",
-          "azure",
-          "google-cloud",
-          "oracle-cloud",
-          "saas",
-          "paas",
-          "iaas",
-          "faas",
-        ].includes(o.data.device_type_id || o.data.device_visual)
-      )
-        action("Convert to global cloud/service", () => conversion(o));
-    }
     if (
       [
         "device",
@@ -856,6 +1092,13 @@ const topologyWorkspace = (() => {
         for (const port of ports) {
           const row = document.createElement("div");
           row.className = "scopeRow";
+          if(vrfMode.value && vrfInput.value.trim()) {
+            const member=(interfaceMeta(port).effective_vrfs||[]).includes(vrfInput.value.trim());
+            row.style.borderLeft=member?"5px solid #0077cc":"1px solid #aeb8c4";
+            row.style.opacity=member?"1":"0.5";
+            row.dataset.vrfMember=String(member);
+          }
+
           row.textContent =
             port.name + " · " + vrfUI.portSummary(interfaceMeta(port), o);
           if (editor()) {
@@ -910,11 +1153,6 @@ const topologyWorkspace = (() => {
         );
       }
     }
-    if (editor())
-      action("Undo last object edit", async () => {
-        await request("/api/undo", json("POST", {}));
-        await refresh();
-      });
   }
   async function endpointLabel(id) {
     if (!id) return "Not specified";
@@ -1163,12 +1401,14 @@ const topologyWorkspace = (() => {
       const kinds =
         kind === "rack"
           ? "floor,room,telecom_room"
-          : "floor,room,telecom_room,rack";
+          : kind === "outlet" && o?.data?.outlet_type === "dvo"
+            ? "site,building,floor,room,telecom_room,rack"
+            : "floor,room,telecom_room,rack";
       return {
         key: "parent",
         label: "Place in",
         required: true,
-        picker: { kinds, parent: a.building_id || "" },
+        picker: { kinds, parent: kind === "outlet" && o?.data?.outlet_type === "dvo" ? "" : a.building_id || "" },
         value:
           d.rack_id ||
           d.telecom_room_id ||
@@ -1178,12 +1418,13 @@ const topologyWorkspace = (() => {
           a.telecom_room_id ||
           a.room_id ||
           a.floor_id ||
+          (kind === "outlet" && o?.data?.outlet_type === "dvo" ? d.building_id || d.site_id || a.building_id || a.site_id : "") ||
           "",
       };
     }
     return null;
   }
-  async function objectForm(kind, o = null) {
+  async function objectForm(kind, o = null, position = null) {
     if (!editor()) return;
     if (kind === "dvo" || kind === "fiber") {
       o = o || { data: { outlet_type: kind === "dvo" ? "dvo" : "fiber" } };
@@ -1231,6 +1472,18 @@ const topologyWorkspace = (() => {
         },
         { key: "region", label: "Region", value: d.region || "" },
       );
+    if (kind === "site")
+      fields.push({
+        key: "role",
+        label: "Site role",
+        required: true,
+        empty: "Choose a site role…",
+        options: Object.entries(siteRoles).map(([value, r]) => ({
+          value,
+          label: r.label,
+        })),
+        value: d.site_role || "",
+      });
     if (kind === "floor")
       fields.push({
         key: "order",
@@ -1293,14 +1546,17 @@ const topologyWorkspace = (() => {
       fields,
       async (v) => {
         const saveNavigation = navigationRevision;
+        const drop = !existing && position ? position : null;
+        const px = drop ? drop.x : o?.x || 0,
+          py = drop ? drop.y : o?.y || 0;
         const payload = {
           ...copy(d),
           id,
           kind,
           name: v.name.trim(),
           description: v.description,
-          x: o?.x || 0,
-          y: o?.y || 0,
+          x: px,
+          y: py,
           ...(existing ? { version: o.version } : {}),
         };
         if (v.parent) {
@@ -1343,8 +1599,8 @@ const topologyWorkspace = (() => {
             kind,
             name: v.name.trim(),
             description: v.description,
-            x: o?.x || 0,
-            y: o?.y || 0,
+            x: px,
+            y: py,
             ...(existing ? { version: o.version } : {}),
           });
           const key = {
@@ -1365,12 +1621,14 @@ const topologyWorkspace = (() => {
           if (!existing && scope.kind === "service")
             payload.hosting_source_id = scope.id;
         }
+        if (kind === "site") payload.site_role = v.role;
         if (kind === "floor") payload.sort_order = Number(v.order) || 0;
         if (kind === "outlet") payload.outlet_type = v.outlet_type;
         if (["device", "patch_panel"].includes(kind))
           payload.device_type_id = v.device_type;
         if (["device", "virtual_switch"].includes(kind))
           payload.vrfs = vrfUI.parse(v.device_vrfs);
+        if (!existing && ["label","shape","manhole"].includes(kind)) Object.assign(payload,ancestry());
         if (kind === "conduit") {
           payload.endpoint_a_id = v.endpoint_a;
           payload.endpoint_b_id = v.endpoint_b;
@@ -1380,7 +1638,11 @@ const topologyWorkspace = (() => {
         dialog.close();
         deferred = false;
         await refresh();
-        if (!existing && labels[kind] && saveNavigation === navigationRevision)
+        if (!existing && position?.dropped) {
+          const created = (await request("/api/objects?ids=" + encodeURIComponent(id)))[0];
+          if (created) inspect(created);
+        }
+        if (!existing && !position?.dropped && labels[kind] && saveNavigation === navigationRevision)
           await navigate(kind, id);
       },
     );
@@ -1602,6 +1864,7 @@ const topologyWorkspace = (() => {
     target = null,
     existing = null,
     conduit = null,
+    draft = null,
   ) {
     if (!editor()) return;
     const d = existing?.data || {},
@@ -1697,6 +1960,7 @@ const topologyWorkspace = (() => {
         options: [
           { value: "internet", label: "Internet" },
           { value: "mpls", label: "MPLS" },
+          { value: "pls", label: "PLS" },
           { value: "dark_fiber", label: "Dark fiber" },
           { value: "leased_circuit", label: "Leased circuit" },
           { value: "carrier_ethernet", label: "Carrier Ethernet" },
@@ -1718,6 +1982,19 @@ const topologyWorkspace = (() => {
         full: true,
       },
     ];
+    if (draft) {
+      confirmingConnection = true;
+      for (const [key, record] of [["source",source],["target",target]]) {
+        const field = fields.find(field => field.key === key);
+        delete field.picker;
+        field.options = [{value:record.id,label:record.name}];
+        field.disabled = true;
+      }
+      if (draft.source.container_id || draft.target.container_id) {
+        for (const [key,value] of [["medium","copper_twisted_pair"],["cable_type","Cat6"],["connector_a","RJ45"],["connector_b","RJ45"]])
+          fields.find(field => field.key === key).value=value;
+      } else if ([source,target].some(o=>["virtual_machine","virtual_switch"].includes(o.kind))) fields.find(field=>field.key==="class").value="virtual";
+    }
     const f = form(
       existing
         ? "Edit connection"
@@ -1750,7 +2027,31 @@ const topologyWorkspace = (() => {
             circuit_id: v.circuit,
           });
         if (v.class === "logical_tunnel") spec.tunnel_protocol = v.tunnel;
-        await request(
+        if (draft) {
+          const endpoint = (side) => {
+            const descriptor = {...draft[side]};
+            const select = f.inputs[side + "_port"];
+            if (descriptor.container_id) descriptor.interface_name=select.value;
+            else if (select.value === "__auto__") descriptor.auto_interface=true;
+            else {
+              descriptor.interface_id=select.value;
+              descriptor.revision=select._draftPorts?.find(port=>port.id===select.value)?.revision || "";
+            }
+            return descriptor;
+          };
+          connectionGesture.setSaving(true);
+          const buttons=[...f.actions.querySelectorAll("button")];
+          const disabled=buttons.map(button=>button.disabled);
+          buttons.forEach(button=>button.disabled=true);
+          try {
+            await request("/api/topology/connect",json("POST",{id,source:endpoint("source"),target:endpoint("target"),data:spec}));
+          } finally {
+            connectionGesture.setSaving(false);
+            buttons.forEach((button,index)=>button.disabled=disabled[index]);
+          }
+          confirmingConnection=false;
+          connectionGesture.cancel(false);
+        } else await request(
           "/api/links",
           json(existing ? "PUT" : "POST", {
             id,
@@ -1765,6 +2066,37 @@ const topologyWorkspace = (() => {
         await refresh();
       },
     );
+    if (draft) {
+      const fillDraftPorts = async (side, record) => {
+        const select=f.inputs[side+"_port"], descriptor=draft[side], prior=select.value;
+        if (descriptor.container_id) {
+          selectOptions(select,[{value:"Data",label:"Data · RJ45 (new DVO)"},{value:"Voice",label:"Voice · RJ45 (new DVO)"}],prior||"Data");
+        } else {
+          const ports=await request("/api/interfaces?device_id="+encodeURIComponent(record.id));
+          select._draftPorts=ports;
+          if (!ports.length) selectOptions(select,[{value:"__auto__",label:"Interface 1 (created on confirmation)"}],"__auto__");
+          else selectOptions(select,ports,ports.some(p=>p.id===prior)?prior:ports.length===1?ports[0].id:"","Choose interface");
+        }
+      };
+      Promise.all([fillDraftPorts("source",source),fillDraftPorts("target",target)]).catch(e=>f.error.textContent=e.message);
+      const reload=document.createElement("button");reload.type="button";reload.textContent="Refresh interface choices";
+      reload.onclick=async()=>{
+        reload.disabled=true;
+        try {
+          for (const [side,record] of [["source",source],["target",target]]) {
+            const owner=await connectionRecord(draft[side].container_id||record.id);
+            draft[side].version=owner.version;
+            await fillDraftPorts(side,record);
+          }
+          f.error.textContent="Choices refreshed. Review the interfaces before confirming.";
+        } catch(e) {f.error.textContent=e.message;} finally {reload.disabled=false;}
+      };
+      f.actions.prepend(reload);
+      [...f.actions.querySelectorAll("button")].find(button=>button.textContent==="Cancel").addEventListener("click",()=>{
+        if (!connectionGesture.saving) {confirmingConnection=false;connectionGesture.cancel(false);}
+      });
+      f.actions.querySelector("button.primary").textContent="Confirm connection";
+    } else {
     f.inputs.source.onchange = () =>
       populatePorts(f.inputs.source_port, f.inputs.source.value).catch(
         (e) => (f.error.textContent = e.message),
@@ -1783,6 +2115,7 @@ const topologyWorkspace = (() => {
       target?.id,
       existing?.target_interface,
     ).catch(error);
+    }
     const visibility = () => {
       const cls = f.inputs.class.value;
       for (const key of [
@@ -1806,7 +2139,7 @@ const topologyWorkspace = (() => {
   }
   function attachment() {
     const f = form(
-      "Connect Internet / MPLS service",
+      "Connect Internet / MPLS / PLS service",
       [
         {
           key: "gateway",
@@ -1823,9 +2156,9 @@ const topologyWorkspace = (() => {
         },
         {
           key: "service",
-          label: "Internet / MPLS service",
+          label: "Internet / MPLS / PLS service",
           required: true,
-          picker: { kinds: "service", category: "internet,mpls" },
+          picker: { kinds: "service", category: "internet,mpls,pls" },
           value: scope.kind === "service" ? scope.id : "",
           full: true,
         },
@@ -2043,8 +2376,9 @@ const topologyWorkspace = (() => {
       },
     );
   }
-  function create(kind) {
+  function create(kind, position = null) {
     if (!editor()) return;
+    connectionGesture.cancel(false);
     if (!(scene?.allowed_creation_kinds || []).includes(kind)) {
       notice.textContent = "That action is unavailable at this level.";
       return;
@@ -2075,12 +2409,30 @@ const topologyWorkspace = (() => {
       notice.textContent = "Select rack equipment, then Add interface.";
       return;
     }
-    return objectForm(kind);
+    return objectForm(kind, null, position);
+  }
+  async function editEdge(edge) {
+    const params = query();
+    params.set("edge_id", edge.id);
+    params.set("sequence", sequence);
+    const reply = await request("/api/topology/details?" + params);
+    const links = reply.items.filter((item) => item.type === "link");
+    if (!links.length) {
+      notice.textContent = "No editable connection on this edge.";
+      return;
+    }
+    if (links.length > 1) {
+      summary(edge);
+      return;
+    }
+    cableForm(links[0].source, links[0].target, links[0]);
   }
   function context(e) {
     const menu = $("#canvasContextMenu");
     menu.replaceChildren();
-    const o = e.target === cy ? null : nodes.get(e.target.id());
+    const target = e.target === cy ? null : e.target;
+    const isEdge = !!target && target.isEdge();
+    const o = target && !isEdge ? nodes.get(target.id()) : null;
     const add = (label, fn) => {
       const b = document.createElement("button");
       b.textContent = label;
@@ -2091,10 +2443,56 @@ const topologyWorkspace = (() => {
       });
       menu.append(b);
     };
+    add("← Back to previous view", () => $("#scopeBack").click());
+    add("Fit map to view", () => fitView());
+    if (editor())
+      add("Undo last object edit", async () => {
+        await request("/api/undo", json("POST", {}));
+        await refresh();
+      });
     if (o) {
       add("Inspect " + o.name, () => inspect(o));
       if (labels[o.kind]) add("Open " + o.name, () => navigate(o.kind, o.id));
       if (editor()) add("Edit " + o.name, () => objectForm(o.kind, o));
+      if (editor())
+        add("Delete " + o.name, async () => {
+          if (!confirm("Delete " + o.name + "?")) return;
+          await request("/api/objects?id=" + encodeURIComponent(o.id), {
+            method: "DELETE",
+          });
+          selected = null;
+          await refresh();
+        });
+      if (
+        editor() &&
+        o.kind === "device" &&
+        [
+          "cloud",
+          "cloud-provider",
+          "aws",
+          "azure",
+          "google-cloud",
+          "oracle-cloud",
+          "saas",
+          "paas",
+          "iaas",
+          "faas",
+        ].includes(o.data.device_type_id || o.data.device_visual)
+      )
+        add("Convert to global cloud/service", () => conversion(o));
+    }
+    if (isEdge && editor()) {
+      const edge = edges.get(target.id());
+      if (
+        edge &&
+        !edge.category.startsWith("relationship:") &&
+        edge.category !== "conduit" &&
+        edge.category !== "power"
+      )
+        add(
+          edge.count > 1 ? "Edit connection…" : "Edit connection",
+          () => editEdge(edge),
+        );
     }
     for (const kind of scene.allowed_creation_kinds || [])
       add(createLabels[kind], () => create(kind));
@@ -2112,8 +2510,127 @@ const topologyWorkspace = (() => {
       ) + "px";
     menu.hidden = false;
   }
+  const nodeSearchInput = $("#nodeSearchInput"),
+    nodeSearchResults = $("#nodeSearchResults"),
+    nodeSearchClear = $("#nodeSearchClear");
+  let nodeSearchMatches = [],
+    nodeSearchActive = -1,
+    nodeSearchSelected = "";
+  function clearNodeSearch() {
+    nodeSearchInput.value = "";
+    nodeSearchResults.replaceChildren();
+    nodeSearchResults.hidden = true;
+    nodeSearchClear.hidden = true;
+    nodeSearchMatches = [];
+    nodeSearchActive = -1;
+    nodeSearchSelected = "";
+    if (cy && !cy.destroyed()) cy.nodes().removeClass("highlighted");
+  }
+  function refreshNodeSearch() {
+    if (!nodeSearchInput.value) {
+      clearNodeSearch();
+      return;
+    }
+    renderNodeSearch();
+    if (nodeSearchSelected && cy && !cy.destroyed()) {
+      const el = cy.getElementById(nodeSearchSelected);
+      if (el.length) el.addClass("highlighted");
+      else nodeSearchSelected = "";
+    }
+  }
+  function markNodeSearchActive() {
+    for (const [i, row] of [...nodeSearchResults.children].entries())
+      row.classList.toggle("active", i === nodeSearchActive);
+  }
+  function renderNodeSearch() {
+    const q = nodeSearchInput.value.trim().toLowerCase();
+    nodeSearchMatches = q
+      ? [...nodes.values()]
+          .filter((o) => (o.name || "").toLowerCase().includes(q))
+          .sort((a, b) => {
+            const rank = (o) =>
+              o.name.toLowerCase().startsWith(q) ? 0 : 1;
+            return (
+              rank(a) - rank(b) || a.name.localeCompare(b.name)
+            );
+          })
+      : [];
+    nodeSearchActive = nodeSearchMatches.length ? 0 : -1;
+    nodeSearchResults.replaceChildren();
+    for (const o of nodeSearchMatches.slice(0, 8)) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.setAttribute("role", "option");
+      const img = document.createElement("img");
+      img.src = icon(o);
+      img.alt = "";
+      const name = document.createElement("span");
+      name.textContent = o.name;
+      const kind = document.createElement("span");
+      kind.className = "kind";
+      kind.textContent = labels[o.kind] || o.kind;
+      row.append(img, name, kind);
+      row.onclick = () =>
+        selectNodeSearch(nodeSearchMatches.indexOf(o));
+      nodeSearchResults.append(row);
+    }
+    if (nodeSearchMatches.length > 8) {
+      const more = document.createElement("div");
+      more.className = "more";
+      more.textContent = `8 of ${nodeSearchMatches.length} matches`;
+      nodeSearchResults.append(more);
+    }
+    if (q && !nodeSearchMatches.length) {
+      const none = document.createElement("div");
+      none.className = "none";
+      none.textContent = "No matching nodes";
+      nodeSearchResults.append(none);
+    }
+    nodeSearchResults.hidden = !q;
+    nodeSearchClear.hidden = !nodeSearchInput.value;
+    markNodeSearchActive();
+  }
+  function selectNodeSearch(i) {
+    const o = nodeSearchMatches[i];
+    if (!o) return;
+    nodeSearchResults.hidden = true;
+    nodeSearchSelected = o.id;
+    if (!cy || cy.destroyed()) return;
+    cy.nodes().removeClass("highlighted");
+    const el = cy.getElementById(o.id);
+    if (el.length) {
+      el.addClass("highlighted");
+      cy.center(el);
+    }
+    inspect(o);
+  }
+  nodeSearchInput.addEventListener("input", renderNodeSearch);
+  nodeSearchInput.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!nodeSearchMatches.length) return;
+      const n = Math.min(nodeSearchMatches.length, 8);
+      nodeSearchActive =
+        (nodeSearchActive + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+      markNodeSearchActive();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      selectNodeSearch(nodeSearchActive);
+    } else if (e.key === "Escape") {
+      clearNodeSearch();
+      nodeSearchInput.blur();
+    }
+  });
+  nodeSearchClear.addEventListener("click", () => {
+    clearNodeSearch();
+    nodeSearchInput.focus();
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (!$("#nodeSearch").contains(e.target)) nodeSearchResults.hidden = true;
+  });
   function updateMenu() {
-    const section = $("#menuPanel .menuSection .menuItems");
+    refreshNodeSearch();
+    const section = $("#menuCreateItems");
     section.replaceChildren();
     for (const kind of scene?.allowed_creation_kinds || []) {
       const b = document.createElement("button");
@@ -2128,6 +2645,84 @@ const topologyWorkspace = (() => {
       text.className = "hint";
       text.textContent = "Browse and inspect topology";
       section.append(text);
+    }
+    renderPalette();
+  }
+  // Keep the palette stable across scopes; validate the destination at drop.
+  // Link is a draft gesture, rather than a saved inventory object.
+  const paletteIcons = {
+    cable: "/img/mapper/connector.svg",
+    site: "/img/mapper/globe.svg",
+    service: "/img/mapper/cloud.svg",
+    building: "/img/mapper/building.svg",
+    generator: "/img/mapper/generator.svg",
+    ups: "/img/mapper/ups.svg",
+    floor: "/img/mapper/floor.svg",
+    room: "/img/mapper/room.svg",
+    telecom_room: "/img/mapper/telecom-room.svg",
+    rack: "/img/mapper/rack.svg",
+    device: "/img/mapper/desktop-tower.svg",
+    patch_panel: "/img/mapper/patch-panel.svg",
+    dvo: "/img/mapper/rj45.svg",
+    fiber: "/img/mapper/fiber.svg",
+    conduit: "/img/mapper/connector.svg",
+    manhole: "/img/mapper/manhole.svg",
+    label: "/img/mapper/text-t.svg",
+    shape: "/img/mapper/rectangle-landscape.svg",
+  };
+  const paletteCaptions = {
+    cable: "Link",
+    site: "Site",
+    service: "Cloud",
+    building: "Building",
+    generator: "Generator",
+    ups: "UPS",
+    floor: "Floor",
+    room: "Room",
+    telecom_room: "Telecom",
+    rack: "Rack",
+    device: "Device",
+    patch_panel: "Panel",
+    dvo: "DVO",
+    fiber: "Fiber",
+    conduit: "Conduit",
+    manhole: "Manhole",
+    label: "Label",
+    shape: "Shape",
+  };
+  function renderPalette() {
+    const bar = $("#paletteBar");
+    const kinds = editor() ? Object.keys(paletteIcons) : [];
+    bar.replaceChildren();
+    bar.hidden = !kinds.length;
+    for (const kind of kinds) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "paletteBtn";
+      b.draggable = true;
+      b.dataset.kind = kind;
+      b.title = kind === "cable"
+        ? "Link — drag onto equipment or a location container"
+        : (createLabels[kind] || "Add " + kind) +
+          " — drag onto the canvas or a compatible container, or click to add";
+      const img = document.createElement("img");
+      img.src = paletteIcons[kind];
+      img.alt = "";
+      img.draggable = false;
+      const caption = document.createElement("span");
+      caption.textContent = paletteCaptions[kind] || kind;
+      b.append(img, caption);
+      b.addEventListener("dragstart", (e) => {
+        window.mapperPaletteKind=kind;
+        e.dataTransfer.setData("application/x-mapper-kind", kind);
+        e.dataTransfer.effectAllowed = "copy";
+      });
+      b.addEventListener("click", () => {
+        connectionGesture.cancel(false);
+        if (kind === "cable") cableForm();
+        else create(kind);
+      });
+      bar.append(b);
     }
   }
   $("#scopeLevel").onchange = () => {
@@ -2149,8 +2744,77 @@ const topologyWorkspace = (() => {
     create(kind);
   };
   more.onclick = () => refresh(true);
+  const paletteDropTarget = $("#cy");
+  const dropKinds = {
+    global:["site","service"], service:["service"],
+    site:["building","generator","ups","dvo","conduit","manhole","label","shape"],
+    building:["floor","room","telecom_room","generator","ups","dvo","conduit","manhole","label","shape"],
+    floor:["room","telecom_room","rack","device","patch_panel","dvo","fiber","conduit","manhole","label","shape"],
+    room:["dvo","fiber","device","patch_panel","rack","ups","conduit","manhole","label","shape"],
+    telecom_room:["rack","device","patch_panel","ups","dvo","fiber","conduit","manhole","label","shape"],
+    rack:["device","patch_panel","dvo","manhole","label","shape"],
+  };
+  function paletteHit(event) {
+    if (!cy || cy.destroyed()) return null;
+    const rect=cy.container().getBoundingClientRect(), zoom=cy.zoom(),pan=cy.pan();
+    const point={x:(event.clientX-rect.left-pan.x)/zoom,y:(event.clientY-rect.top-pan.y)/zoom};
+    return cy.nodes().filter(node=>{
+      if (node.data("draft_transient")) return false;
+      const box=node.boundingBox({includeLabels:false});
+      return node.visible() && point.x>=box.x1 && point.x<=box.x2 && point.y>=box.y1 && point.y<=box.y2;
+    }).sort((a,b)=>b.ancestors().length-a.ancestors().length || a.width()*a.height()-b.width()*b.height()).first();
+  }
+  function validPaletteDrop(kind,node) {
+    if (!editor()) return false;
+    if (kind === "cable") return !!node?.length && (connectionContainer(node.data("kind")) || ["device","patch_panel","outlet","service","virtual_machine","virtual_switch","shape","label","manhole"].includes(node.data("kind")));
+    return node?.length ? (dropKinds[node.data("kind")]||[]).includes(kind) : (scene?.allowed_creation_kinds||[]).includes(kind);
+  }
+  function clearDropHighlight() {
+    $(".canvasWrap").classList.remove("paletteDrop");
+    if(cy && !cy.destroyed())cy.nodes().removeClass("palette-drop-target palette-drop-invalid");
+  }
+  paletteDropTarget.addEventListener("dragover",event=>{
+    if(![...(event.dataTransfer?.types||[])].includes("application/x-mapper-kind"))return;
+    event.preventDefault();
+    // Browsers hide drag payloads until drop; remember our own palette kind.
+    const kind=window.mapperPaletteKind || event.dataTransfer.getData("application/x-mapper-kind");
+    const node=paletteHit(event),valid=validPaletteDrop(kind,node);
+    clearDropHighlight();
+    event.dataTransfer.dropEffect=valid?"copy":"none";
+    if(node?.length)node.addClass(valid?"palette-drop-target":"palette-drop-invalid");
+    else if(valid)$(".canvasWrap").classList.add("paletteDrop");
+  });
+  paletteDropTarget.addEventListener("dragleave",clearDropHighlight);
+  document.addEventListener("dragend",()=>{window.mapperPaletteKind=null;clearDropHighlight();});
+  paletteDropTarget.addEventListener("drop",async event=>{
+    const kind=event.dataTransfer?.getData("application/x-mapper-kind");
+    const hit=paletteHit(event),record=hit?.length?nodes.get(hit.id()):null;
+    clearDropHighlight();window.mapperPaletteKind=null;
+    if(!kind)return;
+    event.preventDefault();
+    if(!validPaletteDrop(kind,hit)) {notice.textContent="Drop this tool onto a compatible container or endpoint.";return;}
+    const rect=cy.container().getBoundingClientRect(),zoom=cy.zoom(),pan=cy.pan();
+    let position={x:(event.clientX-rect.left-pan.x)/zoom,y:(event.clientY-rect.top-pan.y)/zoom,dropped:true};
+    try {
+      if(kind==="cable") {await connectionGesture.start(record,event);return;}
+      connectionGesture.cancel(false);
+      if(record) {
+        const parent=await connectionRecord(record.id);
+        if(!(dropKinds[parent.kind]||[]).includes(kind))throw Error("This container no longer accepts that item.");
+        await navigate(parent.kind,parent.id);
+        if(scene?.scope?.id!==parent.id)throw Error("The destination could not be opened.");
+        const extent=cy.extent();position={x:(extent.x1+extent.x2)/2,y:(extent.y1+extent.y2)/2,dropped:true};
+      }
+      create(kind,position);
+    } catch(e) {error(e);}
+  });
+  dialog.addEventListener("cancel",event=>{if(connectionGesture.saving)event.preventDefault();});
   for (const editDialog of [dialog, $("#objectDialog"), $("#linkDialog")])
     editDialog.addEventListener("close", () => {
+      if (editDialog === dialog && confirmingConnection) {
+        confirmingConnection=false;
+        connectionGesture.cancel(false);
+      }
       if (deferred) {
         deferred = false;
         refresh().catch(error);
@@ -2224,6 +2888,36 @@ const topologyWorkspace = (() => {
     notice.textContent =
       "Open the containing location before creating this item.";
   };
+  const connectionContainer = kind => ["site","building","floor","room","telecom_room","rack"].includes(kind);
+  async function connectionRecord(id) {
+    const record=(await request("/api/objects?ids="+encodeURIComponent(id)))[0];
+    if (!record) throw Error("Endpoint or container was removed. Choose it again.");
+    return record;
+  }
+  async function prepareConnection(source) {
+    const record=await connectionRecord(source.id);
+    if (connectionContainer(record.kind)) return {
+      record,container:record,
+      endpoint:{container_id:record.id,provisional_id:crypto.randomUUID(),version:record.version},
+    };
+    if (!["device","patch_panel","virtual_machine","virtual_switch","outlet","service","shape","label","manhole"].includes(record.kind)) throw Error("Drop Link onto equipment or a location container.");
+    const parent=["rack_id","telecom_room_id","room_id","floor_id","building_id","site_id"].map(key=>record.data?.[key]).find(Boolean);
+    const container=parent ? await connectionRecord(parent) : scene?.scope || null;
+    return {record,container,endpoint:{object_id:record.id,version:record.version}};
+  }
+  connectionGesture.configure({
+    isContainer:connectionContainer,
+    icon:record=>itemIcons.item({...record,data:record.data||{}}),
+    prepare:prepareConnection,
+    complete:async(source,targetID)=>{
+      const target=await connectionRecord(targetID);
+      if (connectionGesture.source!==source) return;
+      const sourceRecord=source.endpoint.container_id ? {
+        id:source.endpoint.provisional_id,kind:"outlet",name:"New DVO in "+source.record.name,data:{outlet_type:"dvo"},
+      } : source.record;
+      cableForm(sourceRecord,target,null,null,{source:{...source.endpoint},target:{object_id:target.id,version:target.version}});
+    },
+  });
   const originalConnect = connectInterfaces;
   connectInterfaces = (source = "", target = "") =>
     Promise.all([
@@ -2305,6 +2999,10 @@ const topologyWorkspace = (() => {
   const originalApplyRole = applyRole;
   applyRole = (p) => {
     originalApplyRole(p);
+    if (!editor()) {
+      if (confirmingConnection) {confirmingConnection=false;dialog.close();}
+      connectionGesture.cancel(false);
+    }
     if (scene) syncControls();
     updateMenu();
   };
@@ -2323,11 +3021,78 @@ const topologyWorkspace = (() => {
       refresh(false, true).then(updateMenu).catch(error);
     }
   }, 80);
+  function openPopulateDialog() {
+    if (!editor()) {
+      error(Error("Viewers cannot populate demo data"));
+      return;
+    }
+    const yesNo = [
+      { label: "Yes", value: "1" },
+      { label: "No", value: "0" },
+    ];
+    const { actions } = form(
+      "Populate demo data",
+      [
+        { key: "sites", label: "Sites", type: "number", value: "50", min: 1, max: 200, required: true, help: "Replaces any existing demo data." },
+        { key: "buildings_per_site", label: "Buildings per site", type: "number", value: "10", min: 1, max: 20, required: true },
+        { key: "rooms_per_building", label: "Rooms per building", type: "number", value: "5", min: 1, max: 12, required: true },
+        { key: "telecom_rooms_per_building", label: "Telecom rooms per building", type: "number", value: "2", min: 1, max: 12, required: true, help: "The last rooms of each building become telecom rooms." },
+        { key: "devices_min_per_room", label: "Min devices per room", type: "number", value: "5", min: 0, max: 24, required: true },
+        { key: "devices_max_per_room", label: "Max devices per room", type: "number", value: "10", min: 0, max: 24, required: true },
+        { key: "seed", label: "Random seed", type: "number", value: "1", min: 0, help: "Same seed and options regenerate the same inventory." },
+        { key: "racks", label: "Place equipment in racks", options: yesNo, value: "1" },
+        { key: "conduits", label: "Conduits between buildings", options: yesNo, value: "1" },
+        { key: "power", label: "UPS and generators", options: yesNo, value: "1" },
+        { key: "transports", label: "Internet / MPLS / PLS transports", options: yesNo, value: "1" },
+        { key: "cloud", label: "Cloud services", options: yesNo, value: "1" },
+      ],
+      async (values) => {
+        const save = actions.querySelector("button.primary");
+        const label = save.textContent;
+        save.textContent = "Populating…";
+        try {
+          const num = (k) => (values[k] === "" ? 0 : Number(values[k]));
+          const result = await request("/api/populate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sites: num("sites"),
+              buildings_per_site: num("buildings_per_site"),
+              rooms_per_building: num("rooms_per_building"),
+              telecom_rooms_per_building: num("telecom_rooms_per_building"),
+              devices_min_per_room: num("devices_min_per_room"),
+              devices_max_per_room: num("devices_max_per_room"),
+              seed: num("seed"),
+              racks: values.racks === "1",
+              conduits: values.conduits === "1",
+              power: values.power === "1",
+              transports: values.transports === "1",
+              cloud: values.cloud === "1",
+            }),
+          });
+          dialog.close();
+          const counts = result.counts || {};
+          const total = Object.values(counts).reduce(
+            (sum, n) => sum + Number(n),
+            0,
+          );
+          statusEl.textContent = `Populated ${counts.site || 0} sites, ${counts.building || 0} buildings and ${counts.device || 0} devices (${total} records)`;
+          notice.textContent = statusEl.textContent;
+          navigate("global");
+        } finally {
+          save.textContent = label;
+        }
+      },
+    );
+    actions.querySelector("button.primary").textContent = "Populate";
+  }
   return {
     navigate,
     refresh,
     create,
     inspect,
+    openPopulateDialog,
+    physicsLayout,
     get scope() {
       return scope;
     },

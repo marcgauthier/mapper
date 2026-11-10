@@ -1,118 +1,106 @@
-// The preview stays outside Cytoscape so it never becomes a saved edge or layout item.
+// Draft-only overlay: nothing here is saved as topology or layout inventory.
 const connectionGesture = (() => {
-  const canvas = document.querySelector('#cy');
-  const preview = document.querySelector('#connectionPreview');
-  const line = preview.querySelector('line');
-  const origin = preview.querySelector('circle');
-  let pending = null;
-  let map = null;
-  let restoreGrabbing = false;
-  let suppressDoubleTapUntil = 0;
-  const connectable = node => ['device', 'patch_panel', 'virtual_machine', 'virtual_switch', 'shape', 'label', 'manhole'].includes(node.data('kind'));
-  const sourceNode = () => {
-    if (!pending || !map) return null;
-    const direct = map.getElementById(pending.id);
-    return direct.length ? direct : map.nodes().filter(n => n.data('object_id') === pending.id).first();
-  };
-
-  function draw() {
-    if (!pending || !map) return;
-    const node = sourceNode();
-    if (node?.length) pending.position = {...node.position()};
-    const rect = canvas.getBoundingClientRect(), pan = map.pan(), zoom = map.zoom();
-    const x = pending.position.x * zoom + pan.x, y = pending.position.y * zoom + pan.y;
-    line.setAttribute('x1', x);
-    line.setAttribute('y1', y);
-    line.setAttribute('x2', pending.pointer.x - rect.left);
-    line.setAttribute('y2', pending.pointer.y - rect.top);
-    origin.setAttribute('cx', x);
-    origin.setAttribute('cy', y);
+  const canvas = document.querySelector("#cy");
+  const preview = document.querySelector("#connectionPreview");
+  const line = preview.querySelector("line"), origin = preview.querySelector("circle");
+  const endpointKinds = new Set(["device", "patch_panel", "virtual_machine", "virtual_switch", "outlet", "service", "shape", "label", "manhole"]);
+  let pending = null, map = null, config = {}, scope = null, restoreGrabbing = false;
+  let suppressUntil = 0, revision = 0;
+  const isContainer = node => !!node.data("draft_container") || config.isContainer?.(node.data("kind"));
+  const sourceID = () => pending?.source.endpoint.provisional_id || pending?.source.record.id;
+  function anchor() {
+    if (!pending || !map || map.destroyed()) return null;
+    for (const id of [sourceID(), pending.source.container?.id, pending.marker]) {
+      if (id && map.getElementById(id).length) return map.getElementById(id);
+    }
+    return null;
   }
-
+  function draw() {
+    if (!pending || !map || map.destroyed()) return;
+    const node = anchor(); if (!node?.length) return;
+    const point = node.renderedPosition(), rect = canvas.getBoundingClientRect();
+    line.setAttribute("x1", point.x); line.setAttribute("y1", point.y);
+    line.setAttribute("x2", pending.pointer.x - rect.left); line.setAttribute("y2", pending.pointer.y - rect.top);
+    origin.setAttribute("cx", point.x); origin.setAttribute("cy", point.y);
+  }
   function cancel(announce = true) {
-    if (!pending) return;
+    revision++;
+    if (!pending || pending.phase === "saving") return;
     pending = null;
-    preview.toggleAttribute('hidden', true);
-    canvas.classList.remove('connection-picking');
+    preview.setAttribute("hidden", "");
+    canvas.classList.remove("connection-picking");
     if (map && !map.destroyed()) {
-      map.nodes().removeClass('connection-source connection-target');
+      map.nodes("[draft_transient]").remove();
+      map.nodes().removeClass("connection-source connection-target");
       map.autoungrabify(restoreGrabbing);
     }
-    if (announce) statusEl.textContent = 'Connection canceled';
+    if (announce) statusEl.textContent = "Connection canceled";
   }
-
-  function start(source, event) {
-    if (window.userRole === 'viewer') return;
-    if (!source || source.type !== 'object' || !map) return;
-    cancel(false);
-    const node = map.getElementById(source.id).length ? map.getElementById(source.id) : map.nodes().filter(n => n.data('object_id') === source.id).first();
-    if (!node?.length || !connectable(node)) {
-      statusEl.textContent = 'Select a visible device or map item to connect';
-      return;
-    }
-    const rect = canvas.getBoundingClientRect(), point = node.renderedPosition();
-    pending = {
-      id: source.id, name: source.label, position: {...node.position()},
-      pointer: {x: event?.clientX ?? rect.left + point.x, y: event?.clientY ?? rect.top + point.y}
-    };
-    window.selectedItem = source;
-    map.nodes().unselect();
-    node.select().addClass('connection-source');
-    restoreGrabbing = map.autoungrabify();
-    map.autoungrabify(true);
-    canvas.classList.add('connection-picking');
-    preview.toggleAttribute('hidden', false);
-    draw();
-    statusEl.textContent = 'Connecting from ' + source.label + ': click a second item, or press Esc to cancel';
+  async function start(source, event) {
+    if (window.userRole === "viewer" || !source || !map || pending?.phase === "saving") return;
+    cancel(false); suppressUntil=0; const ticket = revision;
+    try {
+      const prepared = await config.prepare(source);
+      if (ticket !== revision) return;
+      const rect = canvas.getBoundingClientRect();
+      pending = {source: prepared, phase: "drawing", pointer: {x: event?.clientX ?? rect.left + rect.width / 2, y: event?.clientY ?? rect.top + rect.height / 2}};
+      bind(map, scope);
+      statusEl.textContent = "Connecting from " + prepared.record.name + ": select an endpoint; double-click maps to enter; Esc cancels";
+    } catch (error) { statusEl.textContent = error.message; }
   }
-
-  // Return true when a click belongs to this gesture, so normal inspection and
-  // Shift-click connection handling do not also run for the same click.
   function choose(node) {
     if (!pending) return false;
-    const target = node.data('object_id') || node.id();
-    if (!connectable(node) || target === pending.id) {
-      statusEl.textContent = 'Click a different device or map item, or press Esc to cancel';
-      return true;
+    if (pending.phase !== "drawing") return true;
+    if (isContainer(node)) { statusEl.textContent = "Double-click this map to choose an endpoint inside"; return true; }
+    const id = node.data("object_id") || node.id();
+    if (node.data("draft_transient") || id === sourceID() || !endpointKinds.has(node.data("kind"))) {
+      statusEl.textContent = "Choose a different equipment or outlet endpoint"; return true;
     }
-    const source = pending.id;
-    suppressDoubleTapUntil = Date.now() + 500;
-    cancel(false);
-    connectInterfaces(source, target);
+    pending.phase = "confirming"; suppressUntil = Date.now() + 500;
+    const draft = pending;
+    config.complete(draft.source, id).catch(error => {
+      if (pending === draft) pending.phase = "drawing";
+      statusEl.textContent = error.message;
+    });
     return true;
   }
-
-  function bind(nextMap) {
-    map = nextMap;
+  function bind(nextMap, nextScope = scope) {
+    const changed = nextMap !== map;
+    map = nextMap; scope = nextScope;
+    if (changed) restoreGrabbing = map.autoungrabify();
     if (pending) {
-      restoreGrabbing = map.autoungrabify();
+      map.nodes("[draft_transient]").remove();
+      const source = pending.source;
+      if (!map.getElementById(sourceID()).length && !map.getElementById(source.container?.id || source.record.id).length) {
+        const inside = source.endpoint.container_id && scope?.id === source.endpoint.container_id;
+        const context = inside ? {id:sourceID(),kind:"outlet",name:"New DVO (pending)"} : source.container || source.record;
+        const id = inside ? sourceID() : "draft-source:" + context.id;
+        const extent = map.extent();
+        map.add({data:{id,object_id:context.id,kind:context.kind,label:context.name,map_label:context.name + (inside ? "\nPending DVO" : "\n↗ Connection source"),icon:config.icon(context),draft_transient:true,draft_container:inside ? "" : (config.isContainer(context.kind) ? context.id : "")},position:{x:extent.x1+110/map.zoom(),y:extent.y1+110/map.zoom()},classes:"boundary mapper-symbol " + (config.isContainer(context.kind) ? "map-container " : "") + context.kind});
+        pending.marker = id;
+      }
       map.autoungrabify(true);
-      sourceNode()?.addClass('connection-source');
-      draw();
+      anchor()?.addClass("connection-source");
+      canvas.classList.add("connection-picking");
+      preview.removeAttribute("hidden"); draw();
     }
-    map.on('pan zoom position', draw);
-    map.on('mouseover', 'node', e => {
-      if (pending && connectable(e.target) && (e.target.data('object_id') || e.target.id()) !== pending.id) e.target.addClass('connection-target');
+    // Each map instance is bound once; start() may reuse that instance.
+    if (map.scratch("_mapperGestureBound")) return;
+    map.scratch("_mapperGestureBound", true);
+    map.on("pan zoom position", draw);
+    map.on("mouseover", "node", e => {
+      if (pending && (isContainer(e.target) || endpointKinds.has(e.target.data("kind")))) e.target.addClass("connection-target");
     });
-    map.on('mouseout', 'node', e => e.target.removeClass('connection-target'));
-    map.on('tap', e => {
-      if (pending && e.target === map) statusEl.textContent = 'Click a second device or map item, or press Esc to cancel';
-    });
+    map.on("mouseout", "node", e => e.target.removeClass("connection-target"));
   }
-
-  canvas.addEventListener('pointermove', e => {
-    if (!pending) return;
-    pending.pointer = {x: e.clientX, y: e.clientY};
-    preview.toggleAttribute('hidden', false);
-    draw();
+  canvas.addEventListener("pointermove", e => {if (pending?.phase === "drawing") {pending.pointer={x:e.clientX,y:e.clientY};preview.removeAttribute("hidden");draw();}});
+  canvas.addEventListener("pointerleave", () => {if (pending?.phase === "drawing") preview.setAttribute("hidden", "");});
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && pending) {
+      if (pending.phase === "saving") {e.preventDefault();statusEl.textContent="Saving connection…";}
+      else cancel();
+    }
   });
-  canvas.addEventListener('pointerleave', () => { if (pending) preview.toggleAttribute('hidden', true); });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && pending) { e.preventDefault(); cancel(); }
-  });
-  document.addEventListener('pointerdown', e => {
-    if (pending && !e.target.closest('.canvasWrap')) cancel();
-  });
-  window.addEventListener('resize', draw);
-  return {start, cancel, choose, bind, get active() {return !!pending;}, get suppressDoubleTap() {return !!pending || Date.now() < suppressDoubleTapUntil;}};
+  window.addEventListener("resize", draw);
+  return {start,cancel,choose,bind,setSaving(value){if(pending)pending.phase=value?"saving":"confirming";},get saving(){return pending?.phase==="saving";},configure(options){config=options;},get active(){return !!pending;},get source(){return pending?.source;},get confirming(){return pending?.phase === "confirming";},get suppressDoubleTap(){return pending?.phase === "confirming" || Date.now()<suppressUntil;}};
 })();
